@@ -550,7 +550,13 @@ function heart(cx, cy, r) {
 
 /* ---------- input ---------- */
 function bindHold(el, on, off) {
-  const down = e => { e.preventDefault(); AudioFX.init(); on(); el.classList.add('held'); };
+  const down = e => {
+    e.preventDefault();
+    AudioFX.init();
+    if (navigator.vibrate) navigator.vibrate(12);
+    on();
+    el.classList.add('held');
+  };
   const up = e => { if (e) e.preventDefault(); off(); el.classList.remove('held'); };
   el.addEventListener('pointerdown', down);
   el.addEventListener('pointerup', up);
