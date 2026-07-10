@@ -20,7 +20,7 @@ style. Plain HTML/CSS/JS, no build step, no dependencies.
 - Missing a subscriber house resets your multiplier.
 - Dodge parked cars, dogs, trash cans and storm drains. Three crashes and the
   round is over.
-- Ride over paper bundles on the road to restock (max 20 papers).
+- Ride over paper bundles on the road to restock (max 30 papers).
 
 ## GitHub Pages
 

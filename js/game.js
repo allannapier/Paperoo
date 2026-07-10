@@ -20,9 +20,9 @@ const MAX_SPEED = 22;
 const SPEED_RAMP = 0.09;        // speed gained per second
 const STEER_RATE = 6.5;         // lateral units/sec while steering
 const PLAYER_MAX_X = 3.6;
-const GRAVITY = 13;
-const START_PAPERS = 10;
-const MAX_PAPERS = 20;
+const GRAVITY = 18;
+const START_PAPERS = 15;
+const MAX_PAPERS = 30;
 const START_LIVES = 3;
 
 /* ---------- canvas / layout ---------- */
@@ -130,7 +130,7 @@ const game = {
   popups: [],
   nextHouseD: [40, 47],   // per side [left, right]
   nextObstacleD: 40,
-  nextBundleD: 120,
+  nextBundleD: 60,
   best: Number(localStorage.getItem('paperperson_best') || 0),
 };
 
@@ -151,7 +151,7 @@ function resetGame() {
   game.popups = [];
   game.nextHouseD = [40, 47];
   game.nextObstacleD = 40;
-  game.nextBundleD = 120;
+  game.nextBundleD = 60;
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
@@ -197,7 +197,7 @@ function spawnAhead() {
   // paper bundles
   while (game.nextBundleD < horizonD) {
     game.entities.push({ kind: 'bundle', d: game.nextBundleD, x: (Math.random() * 2 - 1) * 3, wW: 1.0, wH: 0.7 });
-    game.nextBundleD += 90 + Math.random() * 60;
+    game.nextBundleD += 45 + Math.random() * 30;
   }
 }
 
@@ -205,21 +205,29 @@ function spawnAhead() {
 function throwPaper(dir) { // dir: -1 left, +1 right
   if (game.mode !== 'playing') return;
   if (game.papers <= 0) {
-    addPopup('NO PAPERS!', W / 2, H * 0.5, '#ff8080');
+    announce('NO PAPERS!', '#ff8080');
     AudioFX.missSfx();
     return;
   }
   game.papers--;
+  // near-perpendicular lob, classic Paperboy style: the paper has almost no
+  // forward speed of its own, so it lands beside where you threw it and the
+  // right moment to throw is when the house is abeam — at any ride speed
   game.thrown.push({
-    x: game.player.x, y: 1.3, d: game.dist,
-    vx: dir * 8.5, vy: 5.0, vz: game.speed + 8,
+    x: game.player.x, y: 1.2, d: game.dist,
+    vx: dir * 12, vy: 3.5, vz: game.speed * 0.3,
     spin: Math.random() * Math.PI,
   });
   AudioFX.throwSfx();
 }
 
-function addPopup(text, sx, sy, color) {
-  game.popups.push({ text, x: sx, y: sy, color, t: 0 });
+function addPopup(text, sx, sy, color, big) {
+  game.popups.push({ text, x: sx, y: sy, color, big: !!big, t: 0 });
+}
+
+// scoring feedback the player can't miss: big, centered, on top of the action
+function announce(text, color) {
+  game.popups.push({ text, x: W / 2, y: H * 0.34, color, big: true, t: 0 });
 }
 
 function crash() {
@@ -230,7 +238,7 @@ function crash() {
   game.shake = 0.5;
   game.speed = BASE_SPEED;
   AudioFX.crashSfx();
-  addPopup('CRASH!', W / 2, H * 0.45, '#ff5555');
+  announce('CRASH!', '#ff5555');
   if (game.lives <= 0) endGame();
 }
 
@@ -269,8 +277,7 @@ function paperLands(p) {
         game.streak++;
         const pts = (nearBox ? 250 : 100) * mult();
         game.score += pts;
-        const proj = project(px, 0.5, e.d - game.dist + PLAYER_Z);
-        addPopup(nearBox ? `MAILBOX! +${pts}` : `+${pts}`, proj.x, proj.y, '#7bff9b');
+        announce(nearBox ? `MAILBOX! +${pts}` : `DELIVERED +${pts}`, '#7bff9b');
         AudioFX.deliverSfx();
         scored = true;
         break;
@@ -282,8 +289,7 @@ function paperLands(p) {
         e.delivered = true; // one smash per house
         const pts = 50;
         game.score += pts;
-        const proj = project(px, 1.5, e.d - game.dist + PLAYER_Z);
-        addPopup(`SMASH! +${pts}`, proj.x, proj.y, '#ffd23f');
+        announce(`SMASH! +${pts}`, '#ffd23f');
         AudioFX.smashSfx();
         scored = true;
         break;
@@ -336,13 +342,13 @@ function update(dt) {
         Math.abs(e.x - game.player.x) < 1.3) {
       e.taken = true;
       game.papers = Math.min(MAX_PAPERS, game.papers + 5);
-      addPopup('+5 PAPERS', W / 2, H * 0.5, '#7bd6ff');
+      announce('+5 PAPERS', '#7bd6ff');
       AudioFX.pickupSfx();
     }
     if (e.kind === 'house' && e.sub && !e.delivered && !e.missed && e.d < game.dist - 2) {
       e.missed = true;
       game.streak = 0;
-      addPopup('MISSED HOUSE', W / 2, H * 0.4, '#ff9955');
+      announce('MISSED HOUSE', '#ff9955');
       AudioFX.missSfx();
     }
   }
@@ -368,7 +374,7 @@ function update(dt) {
   for (let i = game.popups.length - 1; i >= 0; i--) {
     const pp = game.popups[i];
     pp.t += dt;
-    if (pp.t > 1.2) game.popups.splice(i, 1);
+    if (pp.t > (pp.big ? 1.5 : 1.2)) game.popups.splice(i, 1);
   }
 }
 
@@ -499,15 +505,32 @@ function render() {
     ctx.drawImage(img, p.x - dw / 2, p.y - dh + bob, dw, dh);
   }
 
-  // popups
+  // popups — big announcements pop in at the centre, small ones drift up
   ctx.textAlign = 'center';
+  let bigRow = 0;
   for (const pp of game.popups) {
-    ctx.globalAlpha = Math.max(0, 1 - pp.t / 1.2);
-    ctx.font = `bold ${Math.max(16, W * 0.045)}px 'Courier New', monospace`;
-    ctx.fillStyle = '#000';
-    ctx.fillText(pp.text, pp.x + 2, pp.y - pp.t * 40 + 2);
-    ctx.fillStyle = pp.color;
-    ctx.fillText(pp.text, pp.x, pp.y - pp.t * 40);
+    const life = pp.big ? 1.5 : 1.2;
+    ctx.globalAlpha = Math.max(0, 1 - pp.t / life);
+    const base = Math.max(16, W * 0.045);
+    if (pp.big) {
+      // scale-in pop, then hold; stack if several fire together
+      const popIn = Math.min(1, pp.t / 0.12);
+      const fs = base * 1.8 * (0.6 + 0.4 * popIn);
+      const y = pp.y + bigRow * base * 2.2 - pp.t * 14;
+      bigRow++;
+      ctx.font = `bold ${fs}px 'Courier New', monospace`;
+      ctx.lineWidth = fs * 0.16;
+      ctx.strokeStyle = '#1a0a14';
+      ctx.strokeText(pp.text, pp.x, y);
+      ctx.fillStyle = pp.color;
+      ctx.fillText(pp.text, pp.x, y);
+    } else {
+      ctx.font = `bold ${base}px 'Courier New', monospace`;
+      ctx.fillStyle = '#000';
+      ctx.fillText(pp.text, pp.x + 2, pp.y - pp.t * 40 + 2);
+      ctx.fillStyle = pp.color;
+      ctx.fillText(pp.text, pp.x, pp.y - pp.t * 40);
+    }
     ctx.globalAlpha = 1;
   }
 
