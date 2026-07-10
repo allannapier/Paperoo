@@ -391,7 +391,7 @@ function render() {
   }
 
   // sky + skyline strip (slight parallax against steering)
-  ctx.fillStyle = '#1c2e5e';
+  ctx.fillStyle = skyTopColor;
   ctx.fillRect(-20, -20, W + 40, cam.horizon + 20);
   const sk = sprites.skyline;
   const skH = Math.min(cam.horizon * 0.85, 200);
@@ -593,8 +593,18 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 
+// flat sky fill above the strip, sampled from the skyline art so they meet
+// seamlessly whatever the strip's top color is
+let skyTopColor = '#1c2e5e';
+
 loadSprites(loaded => {
   sprites = loaded;
+  const sample = document.createElement('canvas');
+  sample.width = sample.height = 4;
+  const sctx = sample.getContext('2d');
+  sctx.drawImage(sprites.skyline, 0, 0);
+  const d = sctx.getImageData(1, 1, 1, 1).data;
+  skyTopColor = `rgb(${d[0]},${d[1]},${d[2]})`;
   // title logo: real image if provided, otherwise the placeholder canvas
   logoImg.src = sprites.logo instanceof HTMLImageElement ? sprites.logo.src : sprites.logo.toDataURL();
   resize();
