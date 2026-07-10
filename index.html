@@ -89,6 +89,22 @@
       0 0 0 5px #101020, 0 1px 0 5px #0a0a14;
   }
   .mirror { transform:scaleX(-1); }
+
+  /* a subscriber house is lined up with the landing ring on this side */
+  .throw.ready {
+    animation:readyPulse .5s ease-in-out infinite alternate;
+  }
+  @keyframes readyPulse {
+    from { filter:brightness(1); }
+    to {
+      filter:brightness(1.35);
+      box-shadow:0 5px 0 #6d1d2c, inset 0 3px 2px rgba(255,255,255,.35),
+        0 0 0 5px #2c7a45, 0 5px 0 5px #0a0a14, 0 0 22px 6px rgba(123,255,155,.6);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .throw.ready { animation:none; filter:brightness(1.3); }
+  }
 </style>
 </head>
 <body>
@@ -98,7 +114,8 @@
     <div id="overlay">
       <img id="logoImg" alt="Paper Person" src="" draggable="false">
       <div id="overlayTitle" style="display:none">PAPER PERSON</div>
-      <div id="overlayText">Deliver papers to the glowing subscriber houses.
+      <div id="overlayText">Deliver papers to the glowing subscriber houses:
+throw when the ring on the road edge lights up green.
 Smash the windows of everyone else. Don't crash!</div>
       <div id="overlayPrompt">TAP TO START</div>
     </div>

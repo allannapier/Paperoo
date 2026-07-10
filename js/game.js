@@ -21,6 +21,12 @@ const SPEED_RAMP = 0.09;        // speed gained per second
 const STEER_RATE = 6.5;         // lateral units/sec while steering
 const PLAYER_MAX_X = 3.6;
 const GRAVITY = 18;
+const THROW_APEX_VY = 3.5;      // vertical launch speed of a thrown paper
+const THROW_Y0 = 1.2;           // hand height the paper leaves from
+// flight time is fixed by the lob physics, so the paper can be made to land
+// at a FIXED distance ahead of the throw point — where the target ring sits
+const THROW_TIME = (THROW_APEX_VY + Math.sqrt(THROW_APEX_VY ** 2 + 2 * GRAVITY * THROW_Y0)) / GRAVITY;
+const THROW_LEAD = 12;          // papers land this far ahead of where you threw
 const START_PAPERS = 15;
 const MAX_PAPERS = 30;
 const START_LIVES = 3;
@@ -33,6 +39,8 @@ const overlayTitle = document.getElementById('overlayTitle');
 const overlayText = document.getElementById('overlayText');
 const overlayPrompt = document.getElementById('overlayPrompt');
 const logoImg = document.getElementById('logoImg');
+const btnThrowL = document.getElementById('btnThrowL');
+const btnThrowR = document.getElementById('btnThrowR');
 
 let W = 0, H = 0; // css pixels
 
@@ -51,8 +59,9 @@ window.addEventListener('resize', resize);
 const cam = { h: 2.4, f: 0, horizon: 0 };
 
 function updateCamera() {
-  cam.f = H * 1.05;
-  cam.horizon = H * 0.30;
+  // wide-ish FOV so roadside houses/mailboxes stay on screen close to the rider
+  cam.f = H * 0.8;
+  cam.horizon = H * 0.28;
 }
 
 // The camera tracks the rider laterally so she never leaves the screen;
@@ -210,12 +219,11 @@ function throwPaper(dir) { // dir: -1 left, +1 right
     return;
   }
   game.papers--;
-  // near-perpendicular lob, classic Paperboy style: the paper has almost no
-  // forward speed of its own, so it lands beside where you threw it and the
-  // right moment to throw is when the house is abeam — at any ride speed
+  // the paper always lands THROW_LEAD ahead of the throw point, i.e. exactly
+  // on the target ring, regardless of ride speed
   game.thrown.push({
-    x: game.player.x, y: 1.2, d: game.dist,
-    vx: dir * 12, vy: 3.5, vz: game.speed * 0.3,
+    x: game.player.x, y: THROW_Y0, d: game.dist,
+    vx: dir * 12, vy: THROW_APEX_VY, vz: THROW_LEAD / THROW_TIME,
     spin: Math.random() * Math.PI,
   });
   AudioFX.throwSfx();
@@ -272,7 +280,7 @@ function paperLands(p) {
       if (Math.abs(e.d - pd) < 4.5 && Math.abs(px) > ROAD_HALF && Math.abs(px) < HOUSE_X + 3.5) {
         e.delivered = true;
         const mb = game.entities.find(m => m.kind === 'mailbox' && m.side === e.side && Math.abs(m.d - (e.d - 1.2)) < 0.1);
-        const nearBox = mb && Math.hypot(px - mb.x, pd - mb.d) < 2.0;
+        const nearBox = mb && Math.hypot(px - mb.x, pd - mb.d) < 2.6;
         if (nearBox) mb.hit = true;
         game.streak++;
         const pts = (nearBox ? 250 : 100) * mult();
@@ -367,6 +375,17 @@ function update(dt) {
     }
   }
 
+  // is a live subscriber house lined up with the landing ring on each side?
+  const target = game.dist + THROW_LEAD;
+  game.ready = { '-1': false, '1': false };
+  for (const e of game.entities) {
+    if (e.kind === 'house' && e.sub && !e.delivered && Math.abs(e.d - target) < 4) {
+      game.ready[e.side] = true;
+    }
+  }
+  btnThrowL.classList.toggle('ready', game.ready['-1']);
+  btnThrowR.classList.toggle('ready', game.ready['1']);
+
   // cull entities behind the camera
   game.entities = game.entities.filter(e => e.d > game.dist - PLAYER_Z);
 
@@ -443,6 +462,29 @@ function render() {
     ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(d2.x, d2.y);
     ctx.closePath();
     ctx.fill();
+  }
+
+  // landing rings: where a thrown paper will come down on each side.
+  // Green + solid when a subscriber house is lined up, faint otherwise.
+  if (game.mode === 'playing' && game.papers > 0) {
+    const ringZ = THROW_LEAD + PLAYER_Z;
+    const pulse = 0.55 + 0.35 * Math.sin(game.time * 7);
+    for (const side of [-1, 1]) {
+      const ready = game.ready && game.ready[side];
+      const p = project(side * MAILBOX_X, 0, ringZ);
+      ctx.strokeStyle = ready ? '#7bff9b' : 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = ready ? 3.5 : 2;
+      ctx.globalAlpha = ready ? pulse : 0.35;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 1.5 * p.s, 0.5 * p.s, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      if (ready) {
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, 0.55 * p.s, 0.18 * p.s, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 
   // entities far -> near
