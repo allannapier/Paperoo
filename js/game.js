@@ -141,20 +141,40 @@ const game = {
   lastDeliverySide: 1,
   sceneryD: [40, 47],     // per-side fill of non-subscriber houses
   ready: { '-1': false, '1': false },
+  level: 1,
+  lp: null,               // current level's director parameters
+  target: 0,              // deliveries needed to advance
+  delivered: 0,
+  subsScheduled: 0,
+  finishD: null,          // where this level's finish line sits
   best: Number(localStorage.getItem('paperperson_best') || 0),
 };
 
-function resetGame() {
+// each level runs the director a little hotter
+function levelParams(L) {
+  return {
+    baseSpeed: Math.min(16, 9.5 + L * 1.2),
+    maxSpeed: Math.min(20, 13 + L * 1.2),
+    subsTotal: Math.min(24, 10 + L * 2),          // subscriber houses this level
+    obstacleShare: Math.min(0.44, 0.30 + 0.02 * L),
+    gapT: Math.max(1.0, 1.6 - 0.06 * L),          // seconds between demands
+  };
+}
+
+function startLevel(L) {
+  game.level = L;
+  game.lp = levelParams(L);
+  game.target = Math.ceil(game.lp.subsTotal * 0.6);
+  game.delivered = 0;
+  game.subsScheduled = 0;
+  game.finishD = null;
   game.dist = 0;
-  game.speed = BASE_SPEED;
+  game.speed = game.lp.baseSpeed;
   game.player.x = 0;
   game.player.steer = 0;
   camX = 0;
-  game.papers = START_PAPERS;
-  game.lives = START_LIVES;
-  game.score = 0;
-  game.streak = 0;
-  game.invuln = 0;
+  game.papers = Math.max(game.papers, START_PAPERS);
+  game.invuln = 1; // brief grace as the new street starts
   game.shake = 0;
   game.entities = [];
   game.thrown = [];
@@ -163,6 +183,8 @@ function resetGame() {
   game.lastDeliverySide = 1;
   game.sceneryD = [40, 47];
   game.ready = { '-1': false, '1': false };
+  game.mode = 'playing';
+  overlay.classList.add('hidden');
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
@@ -177,13 +199,16 @@ const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
  * separately.
  */
 function spawnAhead() {
+  const lp = game.lp;
   const horizonD = game.dist + DRAW_FAR;
-  const diff = Math.min(1, (game.speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED));
+  const diff = Math.min(1, Math.max(0, (game.speed - lp.baseSpeed) / (lp.maxSpeed - lp.baseSpeed)));
 
-  while (game.nextActionD < horizonD) {
+  // the level's demand sequence ends at the finish line
+  while (game.finishD === null && game.nextActionD < horizonD) {
     const d = game.nextActionD;
     const r = Math.random();
-    if (r < 0.46) {
+    const deliveryP = game.subsScheduled < lp.subsTotal ? 0.46 : 0;
+    if (r < deliveryP) {
       // delivery: house placed so its throw moment lands exactly at d
       const side = Math.random() < 0.7 ? -game.lastDeliverySide : game.lastDeliverySide;
       game.lastDeliverySide = side;
@@ -193,7 +218,12 @@ function spawnAhead() {
         sub: true, delivered: false, missed: false, d: hd, x: side * HOUSE_X, wW: 7.4, wH: 6.6,
       });
       game.entities.push({ kind: 'mailbox', side, d: hd - 1.2, x: side * MAILBOX_X, wW: 1.1, wH: 1.55, hit: false });
-    } else if (r < 0.78 + diff * 0.08) {
+      game.subsScheduled++;
+      if (game.subsScheduled === lp.subsTotal) {
+        game.finishD = hd + 22;
+        game.entities.push({ kind: 'finish', d: game.finishD });
+      }
+    } else if (r < deliveryP + lp.obstacleShare + diff * 0.06) {
       const t = Math.random();
       if (t < 0.3) {
         game.entities.push({ kind: 'car', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
@@ -204,20 +234,21 @@ function spawnAhead() {
       } else {
         game.entities.push({ kind: 'drain', d, x: (Math.random() * 2 - 1) * 3, wW: 1.7, wH: 0.5 });
       }
-    } else if (r < 0.9) {
+    } else if (r < deliveryP + lp.obstacleShare + diff * 0.06 + 0.12) {
       game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
     } // else: a breather — nothing to do for a beat
 
-    // demands arrive every ~1.55s early on, tightening to ~0.95s flat out
-    const gapT = 1.55 - 0.6 * diff;
+    // demands tighten within the level as speed ramps
+    const gapT = lp.gapT - 0.45 * diff;
     game.nextActionD = d + Math.max(8, game.speed * gapT * (0.85 + Math.random() * 0.3));
   }
 
   // scenery: dark non-subscriber houses (smashable) fill the gaps, never
   // overlapping a delivery house on the same side
+  const sceneryEnd = game.finishD === null ? horizonD : Math.min(horizonD, game.finishD);
   for (let i = 0; i < 2; i++) {
     const sign = i === 0 ? -1 : 1;
-    while (game.sceneryD[i] < horizonD) {
+    while (game.sceneryD[i] < sceneryEnd) {
       const d = game.sceneryD[i];
       const clash = game.entities.find(e => e.kind === 'house' && e.side === sign && Math.abs(e.d - d) < 9);
       if (clash) {
@@ -277,7 +308,7 @@ function crash() {
   if (game.lives <= 0) endGame();
 }
 
-function endGame() {
+function endGame(reason) {
   game.mode = 'gameover';
   if (game.score > game.best) {
     game.best = game.score;
@@ -286,15 +317,46 @@ function endGame() {
   overlayTitle.style.display = '';
   overlayTitle.textContent = 'GAME OVER';
   logoImg.style.display = 'none';
-  overlayText.textContent = `SCORE ${game.score}\nBEST ${game.best}`;
+  const lines = reason ? `${reason}\n` : '';
+  overlayText.textContent = `${lines}SCORE ${game.score}\nBEST ${game.best}`;
   overlayPrompt.textContent = 'TAP TO RIDE AGAIN';
   overlay.classList.remove('hidden');
 }
 
 function startGame() {
-  resetGame();
-  game.mode = 'playing';
-  overlay.classList.add('hidden');
+  game.score = 0;
+  game.lives = START_LIVES;
+  game.streak = 0;
+  game.papers = START_PAPERS;
+  startLevel(1);
+}
+
+// the overlay is the title screen, the level-complete card, and game over
+function overlayAction() {
+  if (!sprites) return;
+  if (game.mode === 'levelup') startLevel(game.level + 1);
+  else if (game.mode !== 'playing') startGame();
+}
+
+function endLevel() {
+  if (game.delivered >= game.target) {
+    const bonus = game.papers * 20;
+    game.score += bonus;
+    if (game.score > game.best) {
+      game.best = game.score;
+      localStorage.setItem('paperperson_best', String(game.best));
+    }
+    game.mode = 'levelup';
+    overlayTitle.style.display = '';
+    overlayTitle.textContent = `LEVEL ${game.level} COMPLETE!`;
+    logoImg.style.display = 'none';
+    overlayText.textContent = `DELIVERED ${game.delivered}/${game.lp.subsTotal}\nPAPER BONUS +${bonus}\nSCORE ${game.score}`;
+    overlayPrompt.textContent = `TAP FOR LEVEL ${game.level + 1}`;
+    overlay.classList.remove('hidden');
+    AudioFX.deliverSfx();
+  } else {
+    endGame(`DELIVERED ${game.delivered} OF ${game.lp.subsTotal}\nNEEDED ${game.target}`);
+  }
 }
 
 /* ---------- delivery resolution ---------- */
@@ -310,6 +372,7 @@ function paperLands(p) {
         const nearBox = mb && Math.hypot(px - mb.x, pd - mb.d) < 2.6;
         if (nearBox) mb.hit = true;
         game.streak++;
+        game.delivered++;
         const pts = (nearBox ? 250 : 100) * mult();
         game.score += pts;
         announce(nearBox ? `MAILBOX! +${pts}` : `DELIVERED +${pts}`, '#7bff9b');
@@ -342,7 +405,13 @@ function update(dt) {
   game.time += dt;
   if (game.mode !== 'playing') return;
 
-  game.speed = Math.min(MAX_SPEED, game.speed + SPEED_RAMP * dt);
+  game.speed = Math.min(game.lp.maxSpeed, game.speed + SPEED_RAMP * dt);
+
+  // crossed the finish line?
+  if (game.finishD !== null && game.dist > game.finishD + 4) {
+    endLevel();
+    return;
+  }
   game.dist += game.speed * dt;
   game.invuln = Math.max(0, game.invuln - dt);
   game.shake = Math.max(0, game.shake - dt);
@@ -491,6 +560,29 @@ function render() {
     ctx.fill();
   }
 
+  // finish line: checkered band across the road at the end of the level
+  for (const e of game.entities) {
+    if (e.kind !== 'finish') continue;
+    const z = e.d - game.dist + PLAYER_Z;
+    if (z <= zNear || z > DRAW_FAR) continue;
+    const cols = 10, rows = 2;
+    for (let ri = 0; ri < rows; ri++) {
+      for (let ci = 0; ci < cols; ci++) {
+        const x1 = -ROAD_HALF + (2 * ROAD_HALF * ci) / cols;
+        const x2 = -ROAD_HALF + (2 * ROAD_HALF * (ci + 1)) / cols;
+        const a = project(x1, 0, z + (ri + 1) * 0.9);
+        const b = project(x2, 0, z + (ri + 1) * 0.9);
+        const c2 = project(x2, 0, z + ri * 0.9);
+        const d2 = project(x1, 0, z + ri * 0.9);
+        ctx.fillStyle = (ri + ci) % 2 ? '#e8e8ec' : '#26262e';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(d2.x, d2.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+  }
+
   // landing rings: where a thrown paper will come down on each side.
   // Green + solid when a subscriber house is lined up, faint otherwise.
   if (game.mode === 'playing' && game.papers > 0) {
@@ -613,7 +705,7 @@ function renderHUD() {
   ctx.font = `bold ${fs}px 'Courier New', monospace`;
   ctx.textAlign = 'left';
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.fillRect(0, 0, W, fs * 2.4);
+  ctx.fillRect(0, 0, W, fs * 3.7);
   ctx.fillStyle = '#fff';
   ctx.fillText(`SCORE ${game.score}`, 10, fs * 1.4);
   if (mult() > 1) {
@@ -630,6 +722,13 @@ function renderHUD() {
   ctx.textAlign = 'right';
   ctx.fillStyle = game.papers > 0 ? '#fff' : '#ff8080';
   ctx.fillText(`\u{1F4F0} ${game.papers}`, W - 10, fs * 1.4);
+  // level + delivery target
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#7bd6ff';
+  ctx.fillText(`LEVEL ${game.level}`, 10, fs * 2.9);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = game.delivered >= game.target ? '#7bff9b' : '#fff';
+  ctx.fillText(`\u{1F4EC} ${game.delivered}/${game.target}`, W / 2, fs * 2.9);
 }
 
 function heart(cx, cy, r) {
@@ -675,7 +774,7 @@ window.addEventListener('keydown', e => {
     case 'KeyZ': case 'KeyJ': throwPaper(-1); break;
     case 'KeyX': case 'KeyK': throwPaper(1); break;
     case 'Space': case 'Enter':
-      if (game.mode !== 'playing') startGame();
+      overlayAction();
       break;
   }
 });
@@ -689,7 +788,7 @@ window.addEventListener('keyup', e => {
 overlay.addEventListener('pointerdown', e => {
   e.preventDefault();
   AudioFX.init();
-  if (sprites && game.mode !== 'playing') startGame();
+  if (game.mode !== 'playing') overlayAction();
 });
 
 /* ---------- main loop ---------- */
