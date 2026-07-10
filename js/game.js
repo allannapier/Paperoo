@@ -171,7 +171,7 @@ function spawnAhead() {
         d, x: sign * HOUSE_X, wW: 7.4, wH: 6.6,
       });
       if (sub) {
-        game.entities.push({ kind: 'mailbox', side: sign, d: d - 1.2, x: sign * MAILBOX_X, wW: 0.85, wH: 1.55, hit: false });
+        game.entities.push({ kind: 'mailbox', side: sign, d: d - 1.2, x: sign * MAILBOX_X, wW: 1.1, wH: 1.55, hit: false });
       }
       game.nextHouseD[side] = d + 12 + Math.random() * 7;
     }
