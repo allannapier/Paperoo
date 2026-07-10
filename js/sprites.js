@@ -43,11 +43,13 @@ function loadSprites(onDone) {
   const out = {};
   let pending = Object.keys(SPRITES).length;
   const finish = () => { if (--pending === 0) onDone(out); };
+  // INLINE_ASSETS lets a single-file build embed sprites as data: URIs
+  const inline = (typeof window !== 'undefined' && window.INLINE_ASSETS) || {};
   for (const [key, spec] of Object.entries(SPRITES)) {
     const img = new Image();
     img.onload = () => { out[key] = img; finish(); };
     img.onerror = () => { out[key] = makePlaceholder(spec); finish(); };
-    img.src = 'assets/' + spec.file;
+    img.src = inline[key] || ('assets/' + spec.file);
   }
 }
 
