@@ -113,6 +113,7 @@ const AudioFX = {
     src.start(t);
   },
   throwSfx() { this.noise(0.12, 0.1); this.tone(700, 0.1, 'triangle', 0.06, -400); },
+  barkSfx() { this.tone(190, 0.07, 'square', 0.14, -60); setTimeout(() => this.tone(160, 0.09, 'square', 0.12, -50), 90); },
   deliverSfx() { this.tone(660, 0.09, 'square', 0.1); setTimeout(() => this.tone(990, 0.14, 'square', 0.1), 90); },
   smashSfx() { this.noise(0.25, 0.22); this.tone(220, 0.2, 'sawtooth', 0.08, -150); },
   crashSfx() { this.noise(0.45, 0.3); this.tone(120, 0.4, 'sawtooth', 0.15, -80); },
@@ -228,7 +229,7 @@ function spawnAhead() {
       if (t < 0.3) {
         game.entities.push({ kind: 'car', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
       } else if (t < 0.55) {
-        game.entities.push({ kind: 'dog', d, x: (Math.random() * 2 - 1) * 3, wW: 1.3, wH: 1.0, t: Math.random() * 10 });
+        game.entities.push({ kind: 'dog', d, x: (Math.random() * 2 - 1) * 3, wW: 1.55, wH: 1.0, t: Math.random() * 10 });
       } else if (t < 0.8) {
         game.entities.push({ kind: 'bin', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 0.7), wW: 0.9, wH: 1.25 });
       } else {
@@ -291,9 +292,10 @@ function addPopup(text, sx, sy, color, big) {
   game.popups.push({ text, x: sx, y: sy, color, big: !!big, t: 0 });
 }
 
-// scoring feedback the player can't miss: big, centered, on top of the action
+// scoring feedback the player can't miss: big, centered, high on the screen
+// (clear of the rider and the action on the road)
 function announce(text, color) {
-  game.popups.push({ text, x: W / 2, y: H * 0.34, color, big: true, t: 0 });
+  game.popups.push({ text, x: W / 2, y: H * 0.19, color, big: true, t: 0 });
 }
 
 function crash() {
@@ -429,6 +431,10 @@ function update(dt) {
       e.t += dt;
       const rel = e.d - game.dist;
       if (rel < 20 && rel > 0) {
+        if (!e.barked) {
+          e.barked = true;
+          AudioFX.barkSfx();
+        }
         // wanders toward the rider's lane, facing the way it runs
         const dir = Math.sign(game.player.x - e.x);
         if (dir !== 0) e.facing = dir;
@@ -621,6 +627,13 @@ function render() {
     const dh = dw * (img.height / img.width);
     // faint fade-in at the horizon
     ctx.globalAlpha = Math.min(1, (DRAW_FAR - z) / 12);
+    // pickups glow so they read as something to collect
+    if (e.kind === 'bundle') {
+      ctx.fillStyle = `rgba(123,214,255,${0.28 + 0.14 * Math.sin(game.time * 6)})`;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, dw * 1.0, dw * 0.34, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (e.kind === 'dog' && e.facing < 0) {
       // dog art faces right; mirror it when running left
       ctx.save();
@@ -630,6 +643,20 @@ function render() {
       ctx.restore();
     } else {
       ctx.drawImage(img, p.x - dw / 2, p.y - dh, dw, dh);
+    }
+    // attention markers over things that matter
+    if (e.kind === 'dog' || e.kind === 'bundle') {
+      const fsm = Math.min(26, Math.max(11, p.s * 0.6));
+      const bob = Math.sin(game.time * 8) * fsm * 0.15;
+      ctx.font = `bold ${fsm}px 'Courier New', monospace`;
+      ctx.textAlign = 'center';
+      const label = e.kind === 'dog' ? '!' : '+5 \u{1F4F0}';
+      const my = p.y - dh - fsm * 0.35 + bob;
+      ctx.lineWidth = fsm * 0.22;
+      ctx.strokeStyle = e.kind === 'dog' ? '#fff' : '#0a2030';
+      ctx.strokeText(label, p.x, my);
+      ctx.fillStyle = e.kind === 'dog' ? '#ff4444' : '#9fe3ff';
+      ctx.fillText(label, p.x, my);
     }
     ctx.globalAlpha = 1;
   }
