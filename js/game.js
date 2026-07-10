@@ -16,8 +16,8 @@ const MAILBOX_X = 6.4;          // mailbox distance from road centre
 const PLAYER_Z = 5.2;           // z at which the rider is drawn
 const DRAW_FAR = 90;            // draw distance
 const BASE_SPEED = 10;          // units/sec
-const MAX_SPEED = 22;
-const SPEED_RAMP = 0.09;        // speed gained per second
+const MAX_SPEED = 19;
+const SPEED_RAMP = 0.07;        // speed gained per second
 const STEER_RATE = 6.5;         // lateral units/sec while steering
 const PLAYER_MAX_X = 3.6;
 const GRAVITY = 18;
@@ -137,9 +137,10 @@ const game = {
   entities: [],   // houses, mailboxes, obstacles, bundles
   thrown: [],     // papers in flight
   popups: [],
-  nextHouseD: [40, 47],   // per side [left, right]
-  nextObstacleD: 40,
-  nextBundleD: 60,
+  nextActionD: 26,        // demand director: next point needing a reaction
+  lastDeliverySide: 1,
+  sceneryD: [40, 47],     // per-side fill of non-subscriber houses
+  ready: { '-1': false, '1': false },
   best: Number(localStorage.getItem('paperperson_best') || 0),
 };
 
@@ -158,55 +159,77 @@ function resetGame() {
   game.entities = [];
   game.thrown = [];
   game.popups = [];
-  game.nextHouseD = [40, 47];
-  game.nextObstacleD = 40;
-  game.nextBundleD = 60;
+  game.nextActionD = 26;
+  game.lastDeliverySide = 1;
+  game.sceneryD = [40, 47];
+  game.ready = { '-1': false, '1': false };
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
 
-/* ---------- spawning ---------- */
+/* ---------- spawning ----------
+ * A "demand director" schedules everything the player must react to — a
+ * delivery moment, an obstacle to dodge, a bundle to grab — as ONE sequence
+ * of action points spaced by reaction time (seconds, so the world-unit gap
+ * scales with ride speed). A delivery's action point is where you THROW
+ * (THROW_LEAD before the house), so deliveries and dodges never demand the
+ * same instant. Non-subscriber houses are pure scenery and fill both sides
+ * separately.
+ */
 function spawnAhead() {
   const horizonD = game.dist + DRAW_FAR;
-  // houses, one queue per side
-  for (let side = 0; side < 2; side++) {
-    while (game.nextHouseD[side] < horizonD) {
-      const sub = Math.random() < 0.55;
-      const variant = 1 + Math.floor(Math.random() * 3);
-      const sign = side === 0 ? -1 : 1;
-      const d = game.nextHouseD[side];
-      game.entities.push({
-        kind: 'house', side: sign, variant, sub, delivered: false, missed: false,
-        d, x: sign * HOUSE_X, wW: 7.4, wH: 6.6,
-      });
-      if (sub) {
-        game.entities.push({ kind: 'mailbox', side: sign, d: d - 1.2, x: sign * MAILBOX_X, wW: 1.1, wH: 1.55, hit: false });
-      }
-      game.nextHouseD[side] = d + 12 + Math.random() * 7;
-    }
-  }
-  // obstacles
-  while (game.nextObstacleD < horizonD) {
+  const diff = Math.min(1, (game.speed - BASE_SPEED) / (MAX_SPEED - BASE_SPEED));
+
+  while (game.nextActionD < horizonD) {
+    const d = game.nextActionD;
     const r = Math.random();
-    const d = game.nextObstacleD;
-    if (r < 0.3) {
-      const side = Math.random() < 0.5 ? -1 : 1;
-      game.entities.push({ kind: 'car', d, x: side * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
-    } else if (r < 0.55) {
-      game.entities.push({ kind: 'dog', d, x: (Math.random() * 2 - 1) * 3, wW: 1.3, wH: 1.0, t: Math.random() * 10 });
-    } else if (r < 0.8) {
-      game.entities.push({ kind: 'bin', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 0.7), wW: 0.9, wH: 1.25 });
-    } else {
-      game.entities.push({ kind: 'drain', d, x: (Math.random() * 2 - 1) * 3, wW: 1.7, wH: 0.5 });
-    }
-    // spacing tightens as speed rises
-    const gap = 26 - (game.speed - BASE_SPEED) * 1.1;
-    game.nextObstacleD = d + gap * (0.6 + Math.random() * 0.8);
+    if (r < 0.46) {
+      // delivery: house placed so its throw moment lands exactly at d
+      const side = Math.random() < 0.7 ? -game.lastDeliverySide : game.lastDeliverySide;
+      game.lastDeliverySide = side;
+      const hd = d + THROW_LEAD;
+      game.entities.push({
+        kind: 'house', side, variant: 1 + Math.floor(Math.random() * 3),
+        sub: true, delivered: false, missed: false, d: hd, x: side * HOUSE_X, wW: 7.4, wH: 6.6,
+      });
+      game.entities.push({ kind: 'mailbox', side, d: hd - 1.2, x: side * MAILBOX_X, wW: 1.1, wH: 1.55, hit: false });
+    } else if (r < 0.78 + diff * 0.08) {
+      const t = Math.random();
+      if (t < 0.3) {
+        game.entities.push({ kind: 'car', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
+      } else if (t < 0.55) {
+        game.entities.push({ kind: 'dog', d, x: (Math.random() * 2 - 1) * 3, wW: 1.3, wH: 1.0, t: Math.random() * 10 });
+      } else if (t < 0.8) {
+        game.entities.push({ kind: 'bin', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 0.7), wW: 0.9, wH: 1.25 });
+      } else {
+        game.entities.push({ kind: 'drain', d, x: (Math.random() * 2 - 1) * 3, wW: 1.7, wH: 0.5 });
+      }
+    } else if (r < 0.9) {
+      game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
+    } // else: a breather — nothing to do for a beat
+
+    // demands arrive every ~1.55s early on, tightening to ~0.95s flat out
+    const gapT = 1.55 - 0.6 * diff;
+    game.nextActionD = d + Math.max(8, game.speed * gapT * (0.85 + Math.random() * 0.3));
   }
-  // paper bundles
-  while (game.nextBundleD < horizonD) {
-    game.entities.push({ kind: 'bundle', d: game.nextBundleD, x: (Math.random() * 2 - 1) * 3, wW: 1.0, wH: 0.7 });
-    game.nextBundleD += 45 + Math.random() * 30;
+
+  // scenery: dark non-subscriber houses (smashable) fill the gaps, never
+  // overlapping a delivery house on the same side
+  for (let i = 0; i < 2; i++) {
+    const sign = i === 0 ? -1 : 1;
+    while (game.sceneryD[i] < horizonD) {
+      const d = game.sceneryD[i];
+      const clash = game.entities.find(e => e.kind === 'house' && e.side === sign && Math.abs(e.d - d) < 9);
+      if (clash) {
+        game.sceneryD[i] = clash.d + 9 + Math.random() * 4;
+        continue;
+      }
+      game.entities.push({
+        kind: 'house', side: sign, variant: 1 + Math.floor(Math.random() * 3),
+        sub: false, delivered: false, missed: false, d, x: sign * HOUSE_X, wW: 7.4, wH: 6.6,
+      });
+      game.sceneryD[i] = d + 11 + Math.random() * 6;
+    }
   }
 }
 
@@ -220,10 +243,14 @@ function throwPaper(dir) { // dir: -1 left, +1 right
   }
   game.papers--;
   // the paper always lands THROW_LEAD ahead of the throw point, i.e. exactly
-  // on the target ring, regardless of ride speed
+  // on the target ring, regardless of ride speed. Laterally it steers toward
+  // the mailbox line (within limits), so road position helps but a mid-dodge
+  // throw isn't wasted — the timing is the skill.
+  let vx = (dir * MAILBOX_X - game.player.x) / THROW_TIME;
+  vx = dir * Math.min(15, Math.max(7, dir * vx));
   game.thrown.push({
     x: game.player.x, y: THROW_Y0, d: game.dist,
-    vx: dir * 12, vy: THROW_APEX_VY, vz: THROW_LEAD / THROW_TIME,
+    vx, vy: THROW_APEX_VY, vz: THROW_LEAD / THROW_TIME,
     spin: Math.random() * Math.PI,
   });
   AudioFX.throwSfx();
@@ -332,11 +359,11 @@ function update(dt) {
     if (e.kind === 'dog') {
       e.t += dt;
       const rel = e.d - game.dist;
-      if (rel < 30 && rel > 0) {
+      if (rel < 20 && rel > 0) {
         // wanders toward the rider's lane, facing the way it runs
         const dir = Math.sign(game.player.x - e.x);
         if (dir !== 0) e.facing = dir;
-        e.x += dir * 1.1 * dt;
+        e.x += dir * 0.85 * dt;
         e.x = Math.max(-ROAD_HALF + 0.5, Math.min(ROAD_HALF - 0.5, e.x));
       }
     }
