@@ -1,0 +1,376 @@
+/*
+ * Sprite registry for Paper Person.
+ *
+ * Every sprite is defined by a file name under assets/ plus a placeholder
+ * painter. If assets/<file> exists it is used as-is; if not, the painter
+ * draws a stand-in at the same size. Drop real art into assets/ with these
+ * exact file names and it appears in the game with zero code changes.
+ */
+
+const SPRITES = {
+  // rider (rear view) — three lean poses
+  player_straight: { file: 'player_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player_left:     { file: 'player_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player_right:    { file: 'player_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+
+  // houses (front view) — sub = subscriber (lit), nosub = non-subscriber (dark)
+  house1_sub:   { file: 'house1_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, true) },
+  house1_nosub: { file: 'house1_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, false) },
+  house2_sub:   { file: 'house2_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, true) },
+  house2_nosub: { file: 'house2_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, false) },
+  house3_sub:   { file: 'house3_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, true) },
+  house3_nosub: { file: 'house3_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, false) },
+
+  mailbox:     { file: 'mailbox.png',     w: 70,  h: 130, draw: drawMailbox },
+  mailbox_hit: { file: 'mailbox_hit.png', w: 70,  h: 130, draw: (c, w, h) => drawMailbox(c, w, h, true) },
+
+  paper:  { file: 'paper.png',  w: 40,  h: 40,  draw: drawPaper },
+  bundle: { file: 'bundle.png', w: 90,  h: 60,  draw: drawBundle },
+
+  // obstacles
+  car:   { file: 'car.png',   w: 200, h: 150, draw: drawCar },
+  dog1:  { file: 'dog1.png',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 0) },
+  dog2:  { file: 'dog2.png',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 1) },
+  bin:   { file: 'bin.png',   w: 80,  h: 110, draw: drawBin },
+  drain: { file: 'drain.png', w: 140, h: 45,  draw: drawDrain },
+
+  // scenery / ui
+  skyline: { file: 'skyline.png', w: 1024, h: 256, draw: drawSkyline },
+  logo:    { file: 'logo.png',    w: 640,  h: 300, draw: drawLogo },
+};
+
+function loadSprites(onDone) {
+  const out = {};
+  let pending = Object.keys(SPRITES).length;
+  const finish = () => { if (--pending === 0) onDone(out); };
+  for (const [key, spec] of Object.entries(SPRITES)) {
+    const img = new Image();
+    img.onload = () => { out[key] = img; finish(); };
+    img.onerror = () => { out[key] = makePlaceholder(spec); finish(); };
+    img.src = 'assets/' + spec.file;
+  }
+}
+
+function makePlaceholder(spec) {
+  const c = document.createElement('canvas');
+  c.width = spec.w;
+  c.height = spec.h;
+  const ctx = c.getContext('2d');
+  spec.draw(ctx, spec.w, spec.h);
+  return c;
+}
+
+/* ---------- placeholder painters (all replaced by real art later) ---------- */
+
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// girl on an e-scooter, seen from behind; lean = -1 | 0 | 1
+function drawPlayer(ctx, w, h, lean) {
+  const cx = w / 2;
+  ctx.save();
+  ctx.translate(cx, h);
+  ctx.rotate(lean * 0.13);
+  ctx.translate(-cx, -h);
+
+  // rear wheel + fender
+  ctx.fillStyle = '#1a1a1a';
+  rr(ctx, cx - 12, h - 26, 24, 26, 8); ctx.fill();
+  ctx.fillStyle = '#444';
+  rr(ctx, cx - 15, h - 34, 30, 12, 5); ctx.fill();
+  // deck
+  ctx.fillStyle = '#2e2e3e';
+  rr(ctx, cx - 26, h - 40, 52, 10, 4); ctx.fill();
+  // legs
+  ctx.fillStyle = '#3454d1';
+  ctx.fillRect(cx - 16, h - 92, 13, 54);
+  ctx.fillRect(cx + 3,  h - 92, 13, 54);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - 16, h - 46, 13, 8);
+  ctx.fillRect(cx + 3,  h - 46, 13, 8);
+
+  // torso (jacket)
+  ctx.fillStyle = '#1fb57a';
+  rr(ctx, cx - 24, h - 138, 48, 52, 10); ctx.fill();
+  // messenger bag hanging on right hip, papers poking out
+  ctx.fillStyle = '#e88f2a';
+  rr(ctx, cx + 14, h - 112, 26, 30, 5); ctx.fill();
+  ctx.fillStyle = '#f5f0e6';
+  ctx.fillRect(cx + 18, h - 118, 6, 10);
+  ctx.fillRect(cx + 26, h - 120, 6, 12);
+  // bag strap across back
+  ctx.strokeStyle = '#e88f2a';
+  ctx.lineWidth = 7;
+  ctx.beginPath();
+  ctx.moveTo(cx - 20, h - 132);
+  ctx.lineTo(cx + 24, h - 104);
+  ctx.stroke();
+
+  // arms reaching forward-down to the grips
+  ctx.strokeStyle = '#1fb57a';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - 18, h - 126); ctx.lineTo(cx - 44, h - 112); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 18, h - 126); ctx.lineTo(cx + 44, h - 112); ctx.stroke();
+  // handlebar in front of the rider (we see it past her sides)
+  ctx.fillStyle = '#556';
+  rr(ctx, cx - 52, h - 118, 104, 8, 4); ctx.fill();
+  ctx.fillStyle = '#d1495b';
+  rr(ctx, cx - 58, h - 121, 15, 13, 5); ctx.fill();
+  rr(ctx, cx + 43, h - 121, 15, 13, 5); ctx.fill();
+
+  // hair + ponytail (swings opposite the lean)
+  ctx.fillStyle = '#5b3a1e';
+  rr(ctx, cx - 15, h - 158, 30, 26, 8); ctx.fill();
+  ctx.save();
+  ctx.translate(cx, h - 150);
+  ctx.rotate(-lean * 0.35);
+  rr(ctx, -5, 0, 10, 34, 5); ctx.fill();
+  ctx.restore();
+  // helmet
+  ctx.fillStyle = '#ff6fa5';
+  ctx.beginPath();
+  ctx.arc(cx, h - 158, 17, Math.PI, 0);
+  ctx.fill();
+  rr(ctx, cx - 17, h - 160, 34, 8, 3); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - 3, h - 175, 6, 14);
+
+  ctx.restore();
+}
+
+const HOUSE_SCHEMES = [
+  { wall: '#c46d5e', roof: '#7a3b2e', door: '#3d2b1f' },
+  { wall: '#6d8fc4', roof: '#33456b', door: '#22304d' },
+  { wall: '#b8b0a1', roof: '#5d5d6e', door: '#4a3b2a' },
+];
+
+function drawHouse(ctx, w, h, variant, subscriber) {
+  const s = HOUSE_SCHEMES[variant];
+  const wallTop = h * 0.34;
+  // walls
+  ctx.fillStyle = subscriber ? s.wall : shade(s.wall, -30);
+  ctx.fillRect(w * 0.08, wallTop, w * 0.84, h - wallTop);
+  // roof
+  ctx.fillStyle = subscriber ? s.roof : shade(s.roof, -25);
+  ctx.beginPath();
+  ctx.moveTo(0, wallTop + 6);
+  ctx.lineTo(w / 2, 4);
+  ctx.lineTo(w, wallTop + 6);
+  ctx.closePath();
+  ctx.fill();
+  // door
+  ctx.fillStyle = s.door;
+  rr(ctx, w * 0.42, h * 0.62, w * 0.16, h * 0.38, 4); ctx.fill();
+  // windows — lit for subscribers, dark otherwise
+  ctx.fillStyle = subscriber ? '#ffd23f' : '#20242e';
+  const wy = h * 0.46, ww = w * 0.16, wh = h * 0.17;
+  rr(ctx, w * 0.15, wy, ww, wh, 3); ctx.fill();
+  rr(ctx, w * 0.69, wy, ww, wh, 3); ctx.fill();
+  ctx.strokeStyle = subscriber ? '#b98a00' : '#0e1016';
+  ctx.lineWidth = 2;
+  [0.15, 0.69].forEach(fx => {
+    ctx.strokeRect(w * fx, wy, ww, wh);
+    ctx.beginPath();
+    ctx.moveTo(w * fx + ww / 2, wy); ctx.lineTo(w * fx + ww / 2, wy + wh);
+    ctx.moveTo(w * fx, wy + wh / 2); ctx.lineTo(w * fx + ww, wy + wh / 2);
+    ctx.stroke();
+  });
+  // porch light for subscribers
+  if (subscriber) {
+    ctx.fillStyle = '#fff3b0';
+    ctx.beginPath();
+    ctx.arc(w * 0.5, h * 0.585, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+  const b = Math.max(0, Math.min(255, (n & 255) + amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawMailbox(ctx, w, h, hit) {
+  ctx.fillStyle = '#7a5c3e';
+  ctx.fillRect(w / 2 - 5, h * 0.42, 10, h * 0.58);
+  ctx.fillStyle = hit ? '#7bff9b' : '#3a6ea5';
+  rr(ctx, w * 0.12, h * 0.12, w * 0.76, h * 0.34, 10); ctx.fill();
+  ctx.fillStyle = '#d1495b'; // flag
+  ctx.fillRect(w * 0.8, h * 0.02, 5, h * 0.22);
+  ctx.fillRect(w * 0.8, h * 0.02, 14, 8);
+  if (hit) { // paper sticking out
+    ctx.fillStyle = '#f5f0e6';
+    rr(ctx, w * 0.3, h * 0.2, w * 0.4, h * 0.16, 4); ctx.fill();
+  }
+}
+
+function drawPaper(ctx, w, h) {
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(0.5);
+  ctx.fillStyle = '#f5f0e6';
+  rr(ctx, -w * 0.38, -h * 0.2, w * 0.76, h * 0.4, 6); ctx.fill();
+  ctx.strokeStyle = '#b9b2a3';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-w * 0.3, 0); ctx.lineTo(w * 0.3, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBundle(ctx, w, h) {
+  ctx.fillStyle = '#f5f0e6';
+  rr(ctx, 4, h * 0.35, w - 8, h * 0.6, 5); ctx.fill();
+  ctx.fillStyle = '#e4dccb';
+  rr(ctx, 8, h * 0.15, w - 16, h * 0.35, 5); ctx.fill();
+  ctx.strokeStyle = '#d1495b';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(w / 2, 2); ctx.lineTo(w / 2, h - 2);
+  ctx.moveTo(6, h / 2); ctx.lineTo(w - 6, h / 2);
+  ctx.stroke();
+}
+
+// parked car, rear view
+function drawCar(ctx, w, h) {
+  ctx.fillStyle = '#1a1a1a';
+  rr(ctx, w * 0.06, h * 0.72, w * 0.2, h * 0.26, 6); ctx.fill();
+  rr(ctx, w * 0.74, h * 0.72, w * 0.2, h * 0.26, 6); ctx.fill();
+  ctx.fillStyle = '#9b2f43';
+  rr(ctx, 0, h * 0.38, w, h * 0.5, 14); ctx.fill();
+  ctx.fillStyle = '#7c2436';
+  rr(ctx, w * 0.12, h * 0.05, w * 0.76, h * 0.45, 16); ctx.fill();
+  ctx.fillStyle = '#aac6e8';
+  rr(ctx, w * 0.2, h * 0.12, w * 0.6, h * 0.28, 8); ctx.fill();
+  ctx.fillStyle = '#ff5555'; // tail lights
+  rr(ctx, w * 0.05, h * 0.48, w * 0.14, h * 0.12, 4); ctx.fill();
+  rr(ctx, w * 0.81, h * 0.48, w * 0.14, h * 0.12, 4); ctx.fill();
+  ctx.fillStyle = '#ddd'; // plate
+  rr(ctx, w * 0.4, h * 0.55, w * 0.2, h * 0.12, 3); ctx.fill();
+}
+
+function drawDog(ctx, w, h, frame) {
+  ctx.fillStyle = '#8a6642';
+  rr(ctx, w * 0.18, h * 0.3, w * 0.58, h * 0.36, 12); ctx.fill(); // body
+  ctx.beginPath(); // head
+  ctx.arc(w * 0.82, h * 0.32, w * 0.14, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#6e4f30'; // ear + tail
+  rr(ctx, w * 0.86, h * 0.14, w * 0.08, h * 0.18, 4); ctx.fill();
+  ctx.save();
+  ctx.translate(w * 0.18, h * 0.34);
+  ctx.rotate(frame ? -0.5 : -0.9);
+  rr(ctx, -w * 0.05, -h * 0.22, w * 0.08, h * 0.24, 4); ctx.fill();
+  ctx.restore();
+  // legs alternate between frames
+  ctx.fillStyle = '#8a6642';
+  const legY = h * 0.58, legH = h * 0.4;
+  const off = frame ? 6 : -6;
+  ctx.fillRect(w * 0.24 + off, legY, 9, legH);
+  ctx.fillRect(w * 0.36 - off, legY, 9, legH);
+  ctx.fillRect(w * 0.56 + off, legY, 9, legH);
+  ctx.fillRect(w * 0.68 - off, legY, 9, legH);
+  // snout + eye
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath(); ctx.arc(w * 0.94, h * 0.34, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w * 0.85, h * 0.27, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawBin(ctx, w, h) {
+  ctx.fillStyle = '#5d6d7e';
+  ctx.beginPath();
+  ctx.moveTo(w * 0.14, h * 0.18);
+  ctx.lineTo(w * 0.86, h * 0.18);
+  ctx.lineTo(w * 0.78, h);
+  ctx.lineTo(w * 0.22, h);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#48586a';
+  rr(ctx, w * 0.06, h * 0.06, w * 0.88, h * 0.16, 6); ctx.fill();
+  ctx.strokeStyle = '#3d4b5c';
+  ctx.lineWidth = 3;
+  for (let i = 1; i <= 3; i++) {
+    const x = w * 0.14 + (w * 0.72 * i) / 4;
+    ctx.beginPath(); ctx.moveTo(x, h * 0.26); ctx.lineTo(x, h * 0.94); ctx.stroke();
+  }
+}
+
+function drawDrain(ctx, w, h) {
+  ctx.fillStyle = '#23262e';
+  rr(ctx, 0, h * 0.2, w, h * 0.8, 6); ctx.fill();
+  ctx.fillStyle = '#0d0f14';
+  const slots = 5;
+  for (let i = 0; i < slots; i++) {
+    rr(ctx, w * 0.08 + (w * 0.84 * i) / slots + 3, h * 0.35, (w * 0.84) / slots - 8, h * 0.5, 3);
+    ctx.fill();
+  }
+}
+
+function drawSkyline(ctx, w, h) {
+  const grd = ctx.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, '#1c2e5e');
+  grd.addColorStop(0.7, '#4a5d9e');
+  grd.addColorStop(1, '#c98a5b');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, w, h);
+  // sun low on the horizon
+  ctx.fillStyle = '#ffd97a';
+  ctx.beginPath(); ctx.arc(w * 0.72, h * 0.78, h * 0.16, 0, Math.PI * 2); ctx.fill();
+  // distant buildings
+  ctx.fillStyle = '#151b33';
+  let x = 0;
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  while (x < w) {
+    const bw = 30 + rand() * 70;
+    const bh = h * (0.25 + rand() * 0.5);
+    ctx.fillRect(x, h - bh, bw, bh);
+    // lit windows
+    ctx.fillStyle = '#ffd23f';
+    for (let i = 0; i < bw * bh * 0.001; i++) {
+      ctx.fillRect(x + 4 + rand() * (bw - 10), h - bh + 4 + rand() * (bh - 12), 3, 4);
+    }
+    ctx.fillStyle = '#151b33';
+    x += bw + 4 + rand() * 20;
+  }
+  // tree line in front
+  ctx.fillStyle = '#0f2417';
+  for (let tx = 10; tx < w; tx += 26) {
+    ctx.beginPath();
+    ctx.arc(tx, h - 6, 14 + (tx % 3) * 4, Math.PI, 0);
+    ctx.fill();
+  }
+}
+
+function drawLogo(ctx, w, h) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const line = (text, y, size) => {
+    ctx.font = `bold ${size}px 'Courier New', monospace`;
+    ctx.fillStyle = '#2b1740';
+    ctx.fillText(text, w / 2 + 6, y + 6);
+    ctx.fillStyle = '#d1495b';
+    ctx.fillText(text, w / 2 + 3, y + 3);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText(text, w / 2, y);
+  };
+  line('PAPER', h * 0.3, h * 0.34);
+  line('PERSON', h * 0.68, h * 0.34);
+  // little flying paper
+  ctx.save();
+  ctx.translate(w * 0.86, h * 0.16);
+  ctx.rotate(0.4);
+  ctx.fillStyle = '#f5f0e6';
+  rr(ctx, -22, -10, 44, 20, 5); ctx.fill();
+  ctx.restore();
+}

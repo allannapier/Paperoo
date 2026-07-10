@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Paper Person</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    height:100%;
+    background:#0d0d1a;
+    overscroll-behavior:none;
+    touch-action:none;
+    -webkit-user-select:none; user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    font-family:'Courier New', monospace;
+  }
+  #app { display:flex; flex-direction:column; height:100dvh; }
+
+  /* ---- game area (top ~75%) ---- */
+  #gameArea { position:relative; flex:3 1 0; min-height:0; }
+  #gameCanvas { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+
+  #overlay {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:16px;
+    background:rgba(8,8,24,0.72); color:#fff; text-align:center; cursor:pointer;
+    padding:16px;
+  }
+  #overlay.hidden { display:none; }
+  #logoImg { max-width:82%; max-height:40%; image-rendering:pixelated; }
+  #overlayTitle { font-size:clamp(22px,6vw,44px); font-weight:bold; letter-spacing:2px;
+    color:#ffd23f; text-shadow:3px 3px 0 #d1495b, 6px 6px 0 rgba(0,0,0,.5); }
+  #overlayText { font-size:clamp(14px,3.5vw,20px); line-height:1.6; color:#cfd8ff; white-space:pre-line; }
+  #overlayPrompt { font-size:clamp(15px,4vw,22px); color:#7bff9b; animation:blink 1.1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:0.15; } }
+
+  /* ---- controller (bottom ~25%) ---- */
+  #controls {
+    flex:1 0 0; min-height:120px; display:flex; gap:10px; padding:10px;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(#16162c,#0b0b18);
+    border-top:2px solid #2c2c54; touch-action:none;
+  }
+  .padGroup { flex:1; display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .padLabel { text-align:center; font-size:11px; letter-spacing:3px; color:#6a6aa8; }
+  .padButtons { flex:1; display:flex; gap:10px; }
+  .ctl {
+    flex:1; border:0; border-radius:16px; font-family:inherit; font-weight:bold;
+    font-size:clamp(18px,5vw,30px); color:#fff; touch-action:none; cursor:pointer;
+    box-shadow:0 5px 0 rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center;
+  }
+  .ctl:active, .ctl.held { transform:translateY(4px); box-shadow:0 1px 0 rgba(0,0,0,.45); filter:brightness(1.25); }
+  .steer { background:#3454d1; }
+  .throw { background:#d1495b; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="gameArea">
+    <canvas id="gameCanvas"></canvas>
+    <div id="overlay">
+      <img id="logoImg" alt="Paper Person" src="" draggable="false">
+      <div id="overlayTitle" style="display:none">PAPER PERSON</div>
+      <div id="overlayText">Deliver papers to the glowing subscriber houses.
+Smash the windows of everyone else. Don't crash!</div>
+      <div id="overlayPrompt">TAP TO START</div>
+    </div>
+  </div>
+  <div id="controls">
+    <div class="padGroup">
+      <div class="padLabel">STEER</div>
+      <div class="padButtons">
+        <button class="ctl steer" id="btnLeft" aria-label="steer left">&#9664;</button>
+        <button class="ctl steer" id="btnRight" aria-label="steer right">&#9654;</button>
+      </div>
+    </div>
+    <div class="padGroup">
+      <div class="padLabel">THROW</div>
+      <div class="padButtons">
+        <button class="ctl throw" id="btnThrowL" aria-label="throw left">&#128240;&#9664;</button>
+        <button class="ctl throw" id="btnThrowR" aria-label="throw right">&#9654;&#128240;</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="js/sprites.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
