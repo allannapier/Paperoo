@@ -478,8 +478,9 @@ function render() {
     const key = game.player.steer < 0 ? 'player_left' : game.player.steer > 0 ? 'player_right' : 'player_straight';
     const img = sprites[key];
     const p = project(game.player.x, 0, PLAYER_Z);
-    const dw = 1.5 * p.s;
-    const dh = dw * (img.height / img.width);
+    // fixed world height; width follows the sprite's aspect ratio
+    const dh = 2.2 * p.s;
+    const dw = dh * (img.width / img.height);
     // bob with speed
     const bob = Math.sin(game.time * 9) * 0.012 * p.s;
     ctx.drawImage(img, p.x - dw / 2, p.y - dh + bob, dw, dh);
