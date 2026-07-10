@@ -319,8 +319,10 @@ function update(dt) {
       e.t += dt;
       const rel = e.d - game.dist;
       if (rel < 30 && rel > 0) {
-        // wanders toward the rider's lane
-        e.x += Math.sign(game.player.x - e.x) * 1.1 * dt;
+        // wanders toward the rider's lane, facing the way it runs
+        const dir = Math.sign(game.player.x - e.x);
+        if (dir !== 0) e.facing = dir;
+        e.x += dir * 1.1 * dt;
         e.x = Math.max(-ROAD_HALF + 0.5, Math.min(ROAD_HALF - 0.5, e.x));
       }
     }
@@ -452,7 +454,16 @@ function render() {
     const dh = dw * (img.height / img.width);
     // faint fade-in at the horizon
     ctx.globalAlpha = Math.min(1, (DRAW_FAR - z) / 12);
-    ctx.drawImage(img, p.x - dw / 2, p.y - dh, dw, dh);
+    if (e.kind === 'dog' && e.facing < 0) {
+      // dog art faces right; mirror it when running left
+      ctx.save();
+      ctx.translate(p.x, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, -dw / 2, p.y - dh, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, p.x - dw / 2, p.y - dh, dw, dh);
+    }
     ctx.globalAlpha = 1;
   }
 
