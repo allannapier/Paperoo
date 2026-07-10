@@ -447,7 +447,9 @@ function render() {
     if (!img) continue;
     const p = project(e.x, 0, z);
     const dw = e.wW * p.s;
-    const dh = e.wH * p.s;
+    // height follows the sprite's aspect so real art is never distorted
+    // (wH remains the nominal height for placeholders' proportions)
+    const dh = dw * (img.height / img.width);
     // faint fade-in at the horizon
     ctx.globalAlpha = Math.min(1, (DRAW_FAR - z) / 12);
     ctx.drawImage(img, p.x - dw / 2, p.y - dh, dw, dh);
