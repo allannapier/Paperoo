@@ -1,4 +1,4 @@
-# Paper Person
+# Paperoo
 
 **Play it now: https://allannapier.github.io/Paperboy/**
 
