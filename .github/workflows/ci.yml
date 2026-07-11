@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax-check game scripts
+        run: |
+          for f in js/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+      - name: Single-file build succeeds
+        run: python3 tools/build_single.py /tmp/paper-person.html
