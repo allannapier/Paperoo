@@ -1,6 +1,6 @@
 # Paperoo
 
-**Play it now: https://allannapier.github.io/Paperboy/**
+**Play it now: https://allannapier.github.io/Paperoo/**
 
 A web remake of the classic paper-delivery arcade game — you're a girl on an
 e-scooter riding down a suburban street at dusk, throwing newspapers at
