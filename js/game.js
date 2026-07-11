@@ -1,5 +1,5 @@
 /*
- * Paper Person — pseudo-3D delivery game.
+ * Paperoo — pseudo-3D delivery game.
  *
  * World space: x = lateral (units, 0 = road centre), y = height, d = distance
  * along the road. The camera sits behind the rider; entities are projected
@@ -116,6 +116,7 @@ const AudioFX = {
   },
   throwSfx() { this.noise(0.12, 0.1); this.tone(700, 0.1, 'triangle', 0.06, -400); },
   barkSfx() { this.tone(190, 0.07, 'square', 0.14, -60); setTimeout(() => this.tone(160, 0.09, 'square', 0.12, -50), 90); },
+  bonkSfx() { this.noise(0.08, 0.18); this.tone(320, 0.18, 'square', 0.14, -220); setTimeout(() => this.tone(520, 0.12, 'triangle', 0.1, 300), 140); },
   deliverSfx() { this.tone(660, 0.09, 'square', 0.1); setTimeout(() => this.tone(990, 0.14, 'square', 0.1), 90); },
   smashSfx() { this.noise(0.25, 0.22); this.tone(220, 0.2, 'sawtooth', 0.08, -150); },
   crashSfx() { this.noise(0.45, 0.3); this.tone(120, 0.4, 'sawtooth', 0.15, -80); },
@@ -240,6 +241,10 @@ function spawnAhead() {
       }
     } else if (r < deliveryP + lp.obstacleShare + diff * 0.06 + 0.12) {
       game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
+    } else if (r < deliveryP + lp.obstacleShare + diff * 0.06 + 0.22) {
+      // a man out for a stroll on the sidewalk — bonus points for a bullseye
+      const side = Math.random() < 0.5 ? -1 : 1;
+      game.entities.push({ kind: 'ped', side, d: d + THROW_LEAD, x: side * (ROAD_HALF + 0.9), wW: 0.95, wH: 2.0, t: Math.random() * 10, hit: false });
     } // else: a breather — nothing to do for a beat
 
     // demands tighten within the level as speed ramps
@@ -368,8 +373,19 @@ function endLevel() {
 /* ---------- delivery resolution ---------- */
 function paperLands(p) {
   const px = p.x, pd = p.d;
-  // landed on/near a subscriber mailbox or porch?
   let scored = false;
+  // direct hit on a strolling pedestrian? big cheeky bonus
+  for (const e of game.entities) {
+    if (e.kind === 'ped' && !e.hit && Math.abs(e.d - pd) < 1.7 && Math.abs(e.x - px) < 1.4) {
+      e.hit = true;
+      const pts = 200;
+      game.score += pts;
+      announce(`BONK! +${pts}`, '#ffb347');
+      AudioFX.bonkSfx();
+      return;
+    }
+  }
+  // landed on/near a subscriber mailbox or porch?
   for (const e of game.entities) {
     if (e.kind === 'house' && e.sub && !e.delivered && Math.sign(px) === e.side) {
       if (Math.abs(e.d - pd) < 4.5 && Math.abs(px) > ROAD_HALF && Math.abs(px) < HOUSE_X + 3.5) {
@@ -431,6 +447,10 @@ function update(dt) {
 
   // entity behaviour + collisions + missed-delivery detection
   for (const e of game.entities) {
+    if (e.kind === 'ped' && !e.hit) {
+      e.t += dt;
+      e.d -= 0.7 * dt; // ambling toward the rider
+    }
     if (e.kind === 'dog') {
       e.t += dt;
       const rel = e.d - game.dist;
@@ -513,6 +533,7 @@ function spriteFor(e) {
     case 'bin': return sprites.bin;
     case 'drain': return sprites.drain;
     case 'bundle': return sprites.bundle;
+    case 'ped': return e.hit ? sprites.ped_hit : (Math.floor(e.t / 0.28) % 2 ? sprites.ped2 : sprites.ped1);
   }
 }
 
@@ -638,8 +659,9 @@ function render() {
       ctx.ellipse(p.x, p.y, dw * 1.0, dw * 0.34, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    if (e.kind === 'dog' && e.facing < 0) {
-      // dog art faces right; mirror it when running left
+    // dog art faces right (mirror when running left); pedestrians on the
+    // right sidewalk mirror to face the road
+    if ((e.kind === 'dog' && e.facing < 0) || (e.kind === 'ped' && e.side === 1 && !e.hit)) {
       ctx.save();
       ctx.translate(p.x, 0);
       ctx.scale(-1, 1);

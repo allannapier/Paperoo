@@ -1,5 +1,5 @@
 /*
- * Sprite registry for Paper Person.
+ * Sprite registry for Paperoo.
  *
  * Every sprite is defined by a file name under assets/ plus a placeholder
  * painter. If assets/<file> exists it is used as-is; if not, the painter
@@ -33,6 +33,11 @@ const SPRITES = {
   dog2:  { file: 'dog2.png',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 1) },
   bin:   { file: 'bin.png',   w: 80,  h: 110, draw: drawBin },
   drain: { file: 'drain.png', w: 140, h: 45,  draw: drawDrain },
+
+  // pedestrian on the sidewalk — bonus points for a direct hit
+  ped1:    { file: 'ped1.png',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 0) },
+  ped2:    { file: 'ped2.png',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 1) },
+  ped_hit: { file: 'ped_hit.png', w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 2) },
 
   // scenery / ui
   skyline: { file: 'skyline.png', w: 1024, h: 256, draw: drawSkyline },
@@ -318,6 +323,40 @@ function drawDrain(ctx, w, h) {
   }
 }
 
+// simple pedestrian; pose 0/1 = walk frames, 2 = bonked
+function drawPed(ctx, w, h, pose) {
+  const cx = w / 2;
+  ctx.fillStyle = '#c23b3b'; // jumper
+  rr(ctx, cx - 16, h * 0.28, 32, h * 0.3, 8); ctx.fill();
+  ctx.fillStyle = '#3a6ea5'; // legs
+  const off = pose === 1 ? 10 : pose === 0 ? -10 : 0;
+  ctx.fillRect(cx - 12 + (pose === 2 ? 0 : off / 2), h * 0.56, 10, h * 0.4);
+  ctx.fillRect(cx + 2 - (pose === 2 ? 0 : off / 2), h * 0.56, 10, h * 0.4);
+  ctx.fillStyle = '#e8b88a'; // head
+  ctx.beginPath();
+  ctx.arc(cx, h * 0.17, h * 0.11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#5b3a1e';
+  ctx.beginPath();
+  ctx.arc(cx, h * 0.13, h * 0.1, Math.PI, 0);
+  ctx.fill();
+  if (pose === 2) { // hands on head + stars
+    ctx.strokeStyle = '#e8b88a';
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(cx - 18, h * 0.34); ctx.lineTo(cx - 8, h * 0.09); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 18, h * 0.34); ctx.lineTo(cx + 8, h * 0.09); ctx.stroke();
+    ctx.fillStyle = '#ffd23f';
+    ctx.font = `bold ${h * 0.12}px monospace`;
+    ctx.fillText('*', cx - 22, h * 0.06);
+    ctx.fillText('*', cx + 14, h * 0.08);
+  } else { // swinging arms
+    ctx.strokeStyle = '#c23b3b';
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(cx - 14, h * 0.32); ctx.lineTo(cx - 14 - off / 2, h * 0.5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 14, h * 0.32); ctx.lineTo(cx + 14 + off / 2, h * 0.5); ctx.stroke();
+  }
+}
+
 function drawSkyline(ctx, w, h) {
   const grd = ctx.createLinearGradient(0, 0, 0, h);
   grd.addColorStop(0, '#1c2e5e');
@@ -366,8 +405,7 @@ function drawLogo(ctx, w, h) {
     ctx.fillStyle = '#ffd23f';
     ctx.fillText(text, w / 2, y);
   };
-  line('PAPER', h * 0.3, h * 0.34);
-  line('PERSON', h * 0.68, h * 0.34);
+  line('PAPEROO', h * 0.5, h * 0.3);
   // little flying paper
   ctx.save();
   ctx.translate(w * 0.86, h * 0.16);
