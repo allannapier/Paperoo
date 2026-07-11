@@ -1,11 +1,11 @@
 /**
- * Paper Person global leaderboard — Cloudflare Worker + D1.
+ * Paperoo global leaderboard — Cloudflare Worker + D1.
  *
  * Setup (dashboard only, no CLI, ~5 minutes):
  *  1. Cloudflare dashboard -> Storage & Databases -> D1 -> Create database
- *     (name it e.g. "paperperson").
+ *     (name it e.g. "paperoo").
  *  2. Workers & Pages -> Create -> Worker (any name, e.g.
- *     "paperperson-scores") -> Deploy the hello-world.
+ *     "paperoo-scores") -> Deploy the hello-world.
  *  3. Open the worker -> Settings -> Bindings -> Add ->
  *     D1 database, Variable name: DB, pick the database -> Save.
  *  4. Edit code -> replace everything with this file -> Deploy.

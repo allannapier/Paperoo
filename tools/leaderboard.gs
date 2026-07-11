@@ -1,5 +1,5 @@
 /**
- * Paper Person global leaderboard — Google Apps Script web app.
+ * Paperoo global leaderboard — Google Apps Script web app.
  *
  * Setup (once, ~5 minutes):
  *  1. Create a Google Sheet (sheets.new), any name.

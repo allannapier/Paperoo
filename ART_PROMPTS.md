@@ -1,4 +1,4 @@
-# Paper Person — art generation prompts
+# Paperoo — art generation prompts
 
 One prompt per sprite. Generate each image, then save it into the `assets/`
 folder with the **exact file name** shown — the game picks it up automatically
@@ -72,7 +72,7 @@ Roughly square image.
 | File | Prompt (after the style sentence — note the exceptions) |
 |---|---|
 | `skyline.png` | A very wide horizontal background strip of a distant city skyline at dusk: dark blue-purple gradient sky, silhouetted skyscrapers with scattered tiny lit yellow windows, a low warm orange glow and setting sun on the horizon, a dark tree line in the foreground bottom edge. **Wide landscape format, roughly 4:1. NOT transparent — full painted background. Must tile seamlessly when repeated horizontally** (left and right edges must match). |
-| `logo.png` | Retro arcade video game logo with the words **"PAPER PERSON"** in big chunky yellow pixel letters with a red outline and dark drop shadow, on two lines, with a small rolled newspaper spinning off the corner. Transparent background. Wide format, roughly 2:1. |
+| `logo.png` | Retro arcade video game logo with the word **"PAPEROO"** in big chunky yellow pixel letters with a red outline and dark drop shadow, with a small rolled newspaper spinning off the corner. Transparent background. Wide format, roughly 2:1. |
 
 ## After generating
 
