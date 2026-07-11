@@ -31,19 +31,41 @@ needs.
 ## Global leaderboard (optional, ~5 minutes)
 
 Out of the box, high scores save locally on each device. To share one global
-leaderboard between all players:
+leaderboard between all players, deploy a tiny score API and point
+`LEADERBOARD_URL` in [`js/config.js`](js/config.js) at it. Two ready-made
+backends live in `tools/` — pick one:
+
+### Option A: Cloudflare Worker + D1 (recommended)
+
+All in the Cloudflare dashboard, no CLI:
+
+1. **Storage & Databases → D1 → Create database** (name it e.g.
+   `paperperson`).
+2. **Workers & Pages → Create → Worker** (e.g. `paperperson-scores`) and
+   deploy the hello-world it offers.
+3. Open the worker → **Settings → Bindings → Add → D1 database**, variable
+   name `DB`, select your database, save.
+4. **Edit code**, replace everything with
+   [`tools/leaderboard-worker.js`](tools/leaderboard-worker.js), deploy.
+5. Put the worker URL (`https://<name>.<account>.workers.dev`) into
+   `js/config.js` as `LEADERBOARD_URL`, commit, push.
+
+The table creates itself on first use; only the top 500 scores are kept.
+Delete rows in the D1 console to moderate.
+
+### Option B: Google Sheets + Apps Script
 
 1. Create a Google Sheet at [sheets.new](https://sheets.new) (any name).
 2. In the sheet: **Extensions → Apps Script**, replace the default code with
    the contents of [`tools/leaderboard.gs`](tools/leaderboard.gs), and save.
 3. **Deploy → New deployment → Web app**, with *Execute as: Me* and
    *Who has access: Anyone*. Deploy, authorize, and copy the web app URL.
-4. Paste the URL into [`js/config.js`](js/config.js) as `LEADERBOARD_URL`,
-   commit, push.
+4. Paste the URL into `js/config.js` as `LEADERBOARD_URL`, commit, push.
 
-Scores land as rows in your sheet (name, score, level, timestamp) — delete a
-row to remove an entry. Submissions are sanitized and clamped server-side,
-but it's a friendly arcade board, not a tamper-proof one.
+Scores land as rows in your sheet — delete a row to remove an entry.
+
+Either way, submissions are sanitized and clamped server-side, but it's a
+friendly arcade board, not a tamper-proof one.
 
 ## Art pipeline
 
