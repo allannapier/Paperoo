@@ -188,6 +188,7 @@ function startLevel(L) {
   game.ready = { '-1': false, '1': false };
   game.mode = 'playing';
   overlay.classList.add('hidden');
+  LeaderboardUI.hide();
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
@@ -323,8 +324,9 @@ function endGame(reason) {
   logoImg.style.display = 'none';
   const lines = reason ? `${reason}\n` : '';
   overlayText.textContent = `${lines}SCORE ${game.score}\nBEST ${game.best}`;
-  overlayPrompt.textContent = 'TAP TO RIDE AGAIN';
+  overlayPrompt.textContent = '';
   overlay.classList.remove('hidden');
+  LeaderboardUI.show(game.score, game.level);
 }
 
 function startGame() {
@@ -796,6 +798,10 @@ bindHold(document.getElementById('btnThrowR'), () => throwPaper(1), () => {});
 
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  // typing a leaderboard name must not drive the game
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
+  // on game over the panel's buttons drive the flow, not Space/Enter
+  if (game.mode === 'gameover' && (e.code === 'Space' || e.code === 'Enter')) return;
   AudioFX.init();
   switch (e.code) {
     case 'ArrowLeft': case 'KeyA': steer.left = true; applySteer(); break;
@@ -815,10 +821,19 @@ window.addEventListener('keyup', e => {
 });
 
 overlay.addEventListener('pointerdown', e => {
+  // let the leaderboard panel's input and buttons work normally
+  if (e.target.closest && e.target.closest('#lbPanel')) return;
   e.preventDefault();
   AudioFX.init();
-  if (game.mode !== 'playing') overlayAction();
+  // on game over, restarting is the RIDE AGAIN button's job
+  if (game.mode !== 'playing' && game.mode !== 'gameover') overlayAction();
 });
+
+document.getElementById('playAgainBtn').addEventListener('click', () => {
+  AudioFX.init();
+  startGame();
+});
+LeaderboardUI.init();
 
 /* ---------- main loop ---------- */
 let lastT = 0;

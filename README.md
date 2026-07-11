@@ -28,6 +28,23 @@ Settings → Pages → "Deploy from a branch" → pick the branch → `/ (root)`
 Save. The game is a static site served from the repo root, so that's all it
 needs.
 
+## Global leaderboard (optional, ~5 minutes)
+
+Out of the box, high scores save locally on each device. To share one global
+leaderboard between all players:
+
+1. Create a Google Sheet at [sheets.new](https://sheets.new) (any name).
+2. In the sheet: **Extensions → Apps Script**, replace the default code with
+   the contents of [`tools/leaderboard.gs`](tools/leaderboard.gs), and save.
+3. **Deploy → New deployment → Web app**, with *Execute as: Me* and
+   *Who has access: Anyone*. Deploy, authorize, and copy the web app URL.
+4. Paste the URL into [`js/config.js`](js/config.js) as `LEADERBOARD_URL`,
+   commit, push.
+
+Scores land as rows in your sheet (name, score, level, timestamp) — delete a
+row to remove an entry. Submissions are sanitized and clamped server-side,
+but it's a friendly arcade board, not a tamper-proof one.
+
 ## Art pipeline
 
 All graphics are currently code-drawn placeholders. Real sprites go in
