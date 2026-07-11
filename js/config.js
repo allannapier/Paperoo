@@ -1,4 +1,4 @@
-// Paper Person configuration.
+// Paperoo configuration.
 //
 // LEADERBOARD_URL: web app endpoint for the global leaderboard.
 // Leave '' for local-only scores (per device). To go global, deploy

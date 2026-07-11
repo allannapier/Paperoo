@@ -20,4 +20,4 @@ jobs:
             node --check "$f"
           done
       - name: Single-file build succeeds
-        run: python3 tools/build_single.py /tmp/paper-person.html
+        run: python3 tools/build_single.py /tmp/paperoo.html

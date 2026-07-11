@@ -43,8 +43,8 @@ backends live in `tools/` — pick one:
 All in the Cloudflare dashboard, no CLI:
 
 1. **Storage & Databases → D1 → Create database** (name it e.g.
-   `paperperson`).
-2. **Workers & Pages → Create → Worker** (e.g. `paperperson-scores`) and
+   `paperoo`).
+2. **Workers & Pages → Create → Worker** (e.g. `paperoo-scores`) and
    deploy the hello-world it offers.
 3. Open the worker → **Settings → Bindings → Add → D1 database**, variable
    name `DB`, select your database, save.
