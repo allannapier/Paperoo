@@ -56,12 +56,14 @@ function resize() {
 window.addEventListener('resize', resize);
 
 /* ---------- camera / projection ---------- */
-const cam = { h: 2.4, f: 0, horizon: 0 };
+// higher camera looking over the rider's shoulder: she sits low on screen and
+// the road ahead spreads out above her, so threats and houses read early
+const cam = { h: 4.2, f: 0, horizon: 0 };
 
 function updateCamera() {
   // wide-ish FOV so roadside houses/mailboxes stay on screen close to the rider
   cam.f = H * 0.8;
-  cam.horizon = H * 0.28;
+  cam.horizon = H * 0.26;
 }
 
 // The camera tracks the rider laterally so she never leaves the screen;
