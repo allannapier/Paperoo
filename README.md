@@ -1,9 +1,12 @@
 # Paper Person
 
+**Play it now: https://allannapier.github.io/Paperboy/**
+
 A web remake of the classic paper-delivery arcade game — you're a girl on an
 e-scooter riding down a suburban street at dusk, throwing newspapers at
 subscriber houses. Viewed from behind the rider, pseudo-3D sprite-scaling
-style. Plain HTML/CSS/JS, no build step, no dependencies.
+style. Plain HTML/CSS/JS, no build step, no dependencies. Global leaderboard
+backed by a Cloudflare Worker.
 
 **Play:** open `index.html`, or serve the folder with any static server
 (`python3 -m http.server`), or enable GitHub Pages (below).
