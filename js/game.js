@@ -67,6 +67,8 @@ const logoImg = document.getElementById('logoImg');
 const charSelect = document.getElementById('charSelect');
 const btnThrowL = document.getElementById('btnThrowL');
 const btnThrowR = document.getElementById('btnThrowR');
+const muteBtn = document.getElementById('muteBtn');
+const pauseBtn = document.getElementById('pauseBtn');
 
 let W = 0, H = 0; // css pixels
 
@@ -105,6 +107,7 @@ function project(x, y, z) {
 /* ---------- audio (tiny synth, no files) ---------- */
 const AudioFX = {
   ctx: null,
+  muted: false, // mirrors Music.muted; the mute button flips both together
   init() {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -113,7 +116,7 @@ const AudioFX = {
     if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
   },
   tone(freq, dur, type = 'square', vol = 0.12, slide = 0) {
-    if (!this.ctx) return;
+    if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime;
     const o = this.ctx.createOscillator();
     const g = this.ctx.createGain();
@@ -127,7 +130,7 @@ const AudioFX = {
     o.stop(t + dur);
   },
   noise(dur, vol = 0.2) {
-    if (!this.ctx) return;
+    if (!this.ctx || this.muted) return;
     const t = this.ctx.currentTime;
     const len = Math.floor(this.ctx.sampleRate * dur);
     const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -161,6 +164,7 @@ const AudioFX = {
 let sprites = null;
 const game = {
   mode: 'title', // title | playing | gameover
+  paused: false,
   dist: 0,
   speed: BASE_SPEED,
   player: { x: 0, steer: 0 },
@@ -233,9 +237,12 @@ function startLevel(L) {
   game.sceneryD = [40, 47];
   game.ready = { '-1': false, '1': false };
   game.mode = 'playing';
+  game.paused = false;
   overlay.classList.add('hidden');
   charSelect.classList.add('hidden');
   LeaderboardUI.hide();
+  Music.start('game');
+  Music.setIntensity(Math.min(3, game.level - 1));
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
@@ -397,6 +404,8 @@ function crash() {
 
 function endGame(reason) {
   game.mode = 'gameover';
+  game.paused = false;
+  Music.start('title');
   if (game.score > game.best) {
     game.best = game.score;
     localStorage.setItem('paperperson_best', String(game.best));
@@ -477,6 +486,19 @@ function endLevel() {
   }
 }
 
+/* ---------- pause ---------- */
+function setPaused(p) {
+  if (p && game.mode !== 'playing') return;
+  if (game.paused === p) return;
+  game.paused = p;
+  pauseBtn.textContent = p ? '▶' : '⏸';
+  if (p) Music.pause(); else Music.resume();
+}
+function togglePause() {
+  if (game.mode !== 'playing') return;
+  setPaused(!game.paused);
+}
+
 /* ---------- delivery resolution ---------- */
 function paperLands(p) {
   const px = p.x, pd = p.d;
@@ -549,6 +571,7 @@ function paperLands(p) {
 
 /* ---------- update ---------- */
 function update(realDt) {
+  if (game.mode === 'playing' && game.paused) return; // frozen: keep rendering, stop simulating
   game.time += realDt;
   if (game.mode !== 'playing') return;
 
@@ -700,6 +723,7 @@ function spriteFor(e) {
 }
 
 function render() {
+  pauseBtn.classList.toggle('hidden', game.mode !== 'playing');
   updateCamera();
   ctx.save();
   if (game.shake > 0) {
@@ -933,6 +957,25 @@ function render() {
   }
 
   renderHUD();
+
+  // paused: translucent banner over the whole scene, HUD still visible below it
+  if (game.mode === 'playing' && game.paused) {
+    ctx.fillStyle = 'rgba(8,8,24,0.6)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    const bigFs = Math.max(28, W * 0.09);
+    ctx.font = `bold ${bigFs}px 'Courier New', monospace`;
+    ctx.lineWidth = bigFs * 0.16;
+    ctx.strokeStyle = '#1a0a14';
+    ctx.strokeText('PAUSED', W / 2, H / 2);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillText('PAUSED', W / 2, H / 2);
+    const smallFs = Math.max(13, W * 0.032);
+    ctx.font = `bold ${smallFs}px 'Courier New', monospace`;
+    ctx.fillStyle = '#cfd8ff';
+    ctx.fillText('TAP ▶ OR PRESS P TO RESUME', W / 2, H / 2 + bigFs * 0.7);
+  }
+
   ctx.restore();
 }
 
@@ -1011,6 +1054,7 @@ function bindHold(el, on, off) {
   const down = e => {
     e.preventDefault();
     AudioFX.init();
+    Music.init();
     if (navigator.vibrate) navigator.vibrate(12);
     on();
     el.classList.add('held');
@@ -1039,11 +1083,13 @@ window.addEventListener('keydown', e => {
   // on game over the panel's buttons drive the flow, not Space/Enter
   if (game.mode === 'gameover' && (e.code === 'Space' || e.code === 'Enter')) return;
   AudioFX.init();
+  Music.init();
   switch (e.code) {
     case 'ArrowLeft': case 'KeyA': steer.left = true; applySteer(); break;
     case 'ArrowRight': case 'KeyD': steer.right = true; applySteer(); break;
     case 'KeyZ': case 'KeyJ': throwPaper(-1); break;
     case 'KeyX': case 'KeyK': throwPaper(1); break;
+    case 'KeyP': case 'Escape': togglePause(); break;
     case 'Space': case 'Enter':
       overlayAction();
       break;
@@ -1061,19 +1107,48 @@ overlay.addEventListener('pointerdown', e => {
   if (e.target.closest && e.target.closest('#lbPanel')) return;
   e.preventDefault();
   AudioFX.init();
+  Music.init();
   // on game over, restarting is the RIDE AGAIN button's job
   if (game.mode !== 'playing' && game.mode !== 'gameover') overlayAction();
 });
 
 document.getElementById('playAgainBtn').addEventListener('click', () => {
   AudioFX.init();
+  Music.init();
   startGame();
 });
 document.getElementById('changeRiderBtn').addEventListener('click', () => {
   AudioFX.init();
+  Music.init();
   showCharSelect();
 });
 LeaderboardUI.init();
+
+/* ---------- mute + pause buttons ---------- */
+muteBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  AudioFX.init();
+  Music.init();
+  const m = Music.toggleMute();
+  AudioFX.muted = m;
+  muteBtn.textContent = m ? '\u{1F507}' : '\u{1F50A}';
+});
+pauseBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  AudioFX.init();
+  Music.init();
+  togglePause();
+});
+// sync the button + AudioFX to whatever was persisted last session
+AudioFX.muted = Music.muted;
+muteBtn.textContent = Music.muted ? '\u{1F507}' : '\u{1F50A}';
+
+// tab hidden mid-run: pause rather than let the world run unattended
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && game.mode === 'playing' && !game.paused) setPaused(true);
+});
 
 /* ---------- character select screen ---------- */
 const pips = (n, max = 5) => '●'.repeat(n) + '○'.repeat(max - n);
@@ -1096,6 +1171,7 @@ function populateCharSelect() {
       e.preventDefault();
       e.stopPropagation();
       AudioFX.init();
+      Music.init();
       pickCharacter(c.id);
     });
     grid.appendChild(card);
@@ -1142,5 +1218,6 @@ sprites = loadSprites((key) => {
 sampleSkyTopColor();
 setLogoImg();
 resize();
+Music.start('title'); // safe pre-gesture: just records intent until Music.init() resumes the context
 requestAnimationFrame(frame);
 resize();
