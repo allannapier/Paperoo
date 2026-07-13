@@ -27,6 +27,7 @@ const THROW_Y0 = 1.2;           // hand height the paper leaves from
 // at a FIXED distance ahead of the throw point — where the target ring sits
 const THROW_TIME = (THROW_APEX_VY + Math.sqrt(THROW_APEX_VY ** 2 + 2 * GRAVITY * THROW_Y0)) / GRAVITY;
 const THROW_LEAD = 12;          // papers land this far ahead of where you threw
+const THROW_COOLDOWN = 0.35;    // seconds between throws, so mashing can't waste papers
 const START_PAPERS = 15;
 const MAX_PAPERS = 30;
 const START_LIVES = 3;
@@ -41,7 +42,7 @@ const CHARACTERS = [
   {
     id: 'milo', prefix: 'player2', name: 'Milo', tagline: 'Hoverboard',
     desc: '“No wheels, no rules. Just vibes and velocity.”',
-    speedMult: 1.0, steerMult: 1.0, speedPips: 3, handlingPips: 4,
+    speedMult: 1.08, steerMult: 0.9, speedPips: 4, handlingPips: 3,
   },
   {
     id: 'skye', prefix: 'player3', name: 'Skye', tagline: 'Rollerblades',
@@ -157,6 +158,7 @@ const game = {
   speed: BASE_SPEED,
   player: { x: 0, steer: 0 },
   papers: START_PAPERS,
+  throwCd: 0,             // seconds left before another throw is accepted
   lives: START_LIVES,
   score: 0,
   streak: 0,
@@ -205,6 +207,7 @@ function startLevel(L) {
   game.player.steer = 0;
   camX = 0;
   game.papers = Math.max(game.papers, START_PAPERS);
+  game.throwCd = 0;
   game.invuln = 1; // brief grace as the new street starts
   game.shake = 0;
   game.entities = [];
@@ -241,7 +244,14 @@ function spawnAhead() {
     const d = game.nextActionD;
     const r = Math.random();
     const deliveryP = game.subsScheduled < lp.subsTotal ? 0.46 : 0;
-    if (r < deliveryP) {
+    // paper drought protection: running low with nothing to pick up ahead
+    // means the next action point MUST be a bundle, whatever the dice said —
+    // the player should never be stranded at 0 papers with nothing to do
+    const bundleAhead = game.entities.some(e => e.kind === 'bundle' && !e.taken && e.d > game.dist);
+    const forceBundle = game.papers <= 3 && !bundleAhead;
+    if (forceBundle) {
+      game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
+    } else if (r < deliveryP) {
       // delivery: house placed so its throw moment lands exactly at d
       const side = Math.random() < 0.7 ? -game.lastDeliverySide : game.lastDeliverySide;
       game.lastDeliverySide = side;
@@ -304,12 +314,16 @@ function spawnAhead() {
 /* ---------- actions ---------- */
 function throwPaper(dir) { // dir: -1 left, +1 right
   if (game.mode !== 'playing') return;
+  // a short cooldown stops mashing the button from burning 2-4 papers per
+  // house — inputs during it are just swallowed, no popup, no sound
+  if (game.throwCd > 0) return;
   if (game.papers <= 0) {
     announce('NO PAPERS!', '#ff8080');
     AudioFX.missSfx();
     return;
   }
   game.papers--;
+  game.throwCd = THROW_COOLDOWN;
   // the paper always lands THROW_LEAD ahead of the throw point, i.e. exactly
   // on the target ring, regardless of ride speed. Laterally it steers toward
   // the mailbox line (within limits), so road position helps but a mid-dodge
@@ -386,9 +400,10 @@ function pickCharacter(id) {
   startGame();
 }
 
-// the overlay is the title screen, the level-complete card, and game over
+// the overlay is the title screen, the level-complete card, the round-failed
+// card, and game over
 function overlayAction() {
-  if (game.mode === 'levelup') startLevel(game.level + 1);
+  if (game.mode === 'levelup' || game.mode === 'roundfail') startLevel(game.level + 1);
   else if (game.mode === 'title') showCharSelect();
 }
 
@@ -408,6 +423,18 @@ function endLevel() {
     overlayPrompt.textContent = `TAP FOR LEVEL ${game.level + 1}`;
     overlay.classList.remove('hidden');
     AudioFX.deliverSfx();
+  } else if (game.lives > 1) {
+    // missing quota costs a heart, not the whole run — the player rides on
+    // to the next street instead of the game ending with lives still banked
+    game.lives--;
+    game.mode = 'roundfail';
+    overlayTitle.style.display = '';
+    overlayTitle.textContent = 'ROUND FAILED';
+    logoImg.style.display = 'none';
+    overlayText.textContent = `DELIVERED ${game.delivered} OF ${game.lp.subsTotal} — NEEDED ${game.target}\n-1 ♥  TRY THE NEXT STREET`;
+    overlayPrompt.textContent = `TAP FOR LEVEL ${game.level + 1}`;
+    overlay.classList.remove('hidden');
+    AudioFX.missSfx();
   } else {
     endGame(`DELIVERED ${game.delivered} OF ${game.lp.subsTotal}\nNEEDED ${game.target}`);
   }
@@ -480,6 +507,7 @@ function update(dt) {
   game.dist += game.speed * dt;
   game.invuln = Math.max(0, game.invuln - dt);
   game.shake = Math.max(0, game.shake - dt);
+  game.throwCd = Math.max(0, game.throwCd - dt);
 
   // steering
   game.player.x += game.player.steer * STEER_RATE * game.character.steerMult * dt;
@@ -814,10 +842,26 @@ function renderHUD() {
   for (let i = 0; i < game.lives; i++) {
     heart(hx + i * fs + fs / 2, fs * 1.15, fs * 0.42);
   }
-  // paper count
+  // paper count — pulses orange toward red as papers run low, and once
+  // empty a pulsing hint nudges the player toward the nearest bundle
   ctx.textAlign = 'right';
-  ctx.fillStyle = game.papers > 0 ? '#fff' : '#ff8080';
-  ctx.fillText(`\u{1F4F0} ${game.papers}`, W - 10, fs * 1.4);
+  if (game.papers <= 0) {
+    ctx.fillStyle = '#ff5555';
+    ctx.fillText(`\u{1F4F0} ${game.papers}`, W - 10, fs * 1.4);
+    const hintPulse = 0.5 + 0.5 * Math.sin(game.time * 6);
+    const hfs = fs * 0.5;
+    ctx.font = `bold ${hfs}px 'Courier New', monospace`;
+    ctx.fillStyle = `rgba(255,150,60,${0.5 + 0.5 * hintPulse})`;
+    ctx.fillText('GRAB A BUNDLE!', W - 10, fs * 1.4 + hfs * 1.3);
+    ctx.font = `bold ${fs}px 'Courier New', monospace`;
+  } else if (game.papers <= 3) {
+    const pulse = 0.5 + 0.5 * Math.sin(game.time * 8);
+    ctx.fillStyle = `rgb(255,${Math.round(160 - 100 * pulse)},${Math.round(80 - 80 * pulse)})`;
+    ctx.fillText(`\u{1F4F0} ${game.papers}`, W - 10, fs * 1.4);
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.fillText(`\u{1F4F0} ${game.papers}`, W - 10, fs * 1.4);
+  }
   // level + delivery target
   ctx.textAlign = 'left';
   ctx.fillStyle = '#7bd6ff';
