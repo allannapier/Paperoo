@@ -374,6 +374,7 @@ function showCharSelect() {
   game.mode = 'select';
   overlay.classList.add('hidden');
   charSelect.classList.remove('hidden');
+  LeaderboardUI.hide();
 }
 
 function pickCharacter(id) {
@@ -897,6 +898,10 @@ overlay.addEventListener('pointerdown', e => {
 document.getElementById('playAgainBtn').addEventListener('click', () => {
   AudioFX.init();
   startGame();
+});
+document.getElementById('changeRiderBtn').addEventListener('click', () => {
+  AudioFX.init();
+  showCharSelect();
 });
 LeaderboardUI.init();
 
