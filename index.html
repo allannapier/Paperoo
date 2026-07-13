@@ -37,6 +37,36 @@
   @keyframes blink { 50% { opacity:0.15; } }
   .hidden { display:none !important; }
 
+  /* ---- character select screen ---- */
+  #charSelect {
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px;
+    background:rgba(8,8,24,0.88); color:#fff; text-align:center;
+    padding:16px; overflow-y:auto;
+  }
+  #charSelectTitle {
+    font-size:clamp(18px,4.5vw,28px); font-weight:bold; letter-spacing:2px;
+    color:#ffd23f; text-shadow:2px 2px 0 #d1495b, 4px 4px 0 rgba(0,0,0,.5);
+    flex:0 0 auto;
+  }
+  #charSelectGrid {
+    display:grid; grid-template-columns:repeat(2, minmax(0,1fr));
+    gap:12px; width:min(94%, 520px); flex:0 0 auto;
+  }
+  .charCard {
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    background:rgba(16,16,32,0.92); border:2px solid #34345c; border-radius:14px;
+    padding:10px 8px; font-family:inherit; color:#fff; cursor:pointer;
+  }
+  .charCard:active { transform:translateY(2px); border-color:#7bd6ff; }
+  .charThumb { height:90px; image-rendering:pixelated; object-fit:contain; pointer-events:none; }
+  .charName { font-weight:bold; font-size:14px; letter-spacing:1px; color:#7bd6ff; }
+  .charTag { font-size:11px; color:#9fa6d0; letter-spacing:1px; }
+  .charDesc { font-size:11px; color:#cfd8ff; line-height:1.35; min-height:2.7em; }
+  .charStats { display:flex; flex-direction:column; gap:2px; font-size:10px; color:#9fa6d0; width:100%; }
+  .charStatRow { display:flex; justify-content:space-between; gap:6px; }
+  .charPips { color:#7bff9b; letter-spacing:1px; }
+
   /* ---- leaderboard panel (game over) ---- */
   #lbPanel {
     width:min(88%, 340px); display:flex; flex-direction:column; gap:10px;
@@ -51,15 +81,19 @@
     font-size:16px; letter-spacing:1px; text-transform:uppercase;
   }
   #nameInput:focus { outline:none; border-color:#7bd6ff; }
-  #submitScoreBtn, #playAgainBtn {
+  #submitScoreBtn, #playAgainBtn, #changeRiderBtn {
     border:0; border-radius:8px; padding:9px 14px; font-family:inherit; font-weight:bold;
     font-size:14px; letter-spacing:1px; color:#fff; cursor:pointer;
     box-shadow:0 3px 0 rgba(0,0,0,.45);
   }
   #submitScoreBtn { background:#1fb57a; }
   #submitScoreBtn:disabled { background:#3a5c4c; cursor:default; }
-  #playAgainBtn { background:#d1495b; font-size:16px; padding:12px; }
-  #submitScoreBtn:active, #playAgainBtn:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.45); }
+  #postGameRow { display:flex; gap:8px; }
+  #playAgainBtn { background:#d1495b; font-size:16px; padding:12px; flex:1.4; }
+  #changeRiderBtn { background:#2c3a6b; font-size:13px; padding:12px 8px; flex:1; }
+  #submitScoreBtn:active, #playAgainBtn:active, #changeRiderBtn:active {
+    transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.45);
+  }
   #lbList {
     list-style:none; margin:0; padding:0; max-height:32vh; overflow-y:auto;
     font-size:14px; text-align:left;
@@ -150,7 +184,7 @@
       <div id="overlayText">Glowing house? That's a customer.
 Throw when the ring turns green.
 Mind the dogs. &#128054;</div>
-      <div id="overlayPrompt">TAP TO START</div>
+      <div id="overlayPrompt">TAP TO CHOOSE YOUR RIDER</div>
       <div id="lbPanel" class="hidden">
         <div id="lbHeading">TOP SCORES</div>
         <div id="nameRow">
@@ -158,8 +192,15 @@ Mind the dogs. &#128054;</div>
           <button id="submitScoreBtn">SUBMIT</button>
         </div>
         <ol id="lbList"></ol>
-        <button id="playAgainBtn">RIDE AGAIN</button>
+        <div id="postGameRow">
+          <button id="playAgainBtn">RIDE AGAIN</button>
+          <button id="changeRiderBtn">CHANGE RIDER</button>
+        </div>
       </div>
+    </div>
+    <div id="charSelect" class="hidden">
+      <div id="charSelectTitle">CHOOSE YOUR RIDER</div>
+      <div id="charSelectGrid"></div>
     </div>
   </div>
   <div id="controls">

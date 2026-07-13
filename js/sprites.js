@@ -8,10 +8,19 @@
  */
 
 const SPRITES = {
-  // rider (rear view) — three lean poses
+  // rider (rear view) — three lean poses, one set per playable character
   player_straight: { file: 'player_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
   player_left:     { file: 'player_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
   player_right:    { file: 'player_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player2_straight: { file: 'player2_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player2_left:     { file: 'player2_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player2_right:    { file: 'player2_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player3_straight: { file: 'player3_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player3_left:     { file: 'player3_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player3_right:    { file: 'player3_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player4_straight: { file: 'player4_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player4_left:     { file: 'player4_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player4_right:    { file: 'player4_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
 
   // houses (front view) — sub = subscriber (lit), nosub = non-subscriber (dark)
   house1_sub:   { file: 'house1_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, true) },
