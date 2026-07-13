@@ -143,11 +143,18 @@ const AudioFX = {
   throwSfx() { this.noise(0.12, 0.1); this.tone(700, 0.1, 'triangle', 0.06, -400); },
   barkSfx() { this.tone(190, 0.07, 'square', 0.14, -60); setTimeout(() => this.tone(160, 0.09, 'square', 0.12, -50), 90); },
   bonkSfx() { this.noise(0.08, 0.18); this.tone(320, 0.18, 'square', 0.14, -220); setTimeout(() => this.tone(520, 0.12, 'triangle', 0.1, 300), 140); },
-  deliverSfx() { this.tone(660, 0.09, 'square', 0.1); setTimeout(() => this.tone(990, 0.14, 'square', 0.1), 90); },
+  // pitch climbs with the streak so consecutive deliveries audibly build
+  deliverSfx(streak = 0) {
+    const f = 1 + 0.06 * Math.min(streak, 12);
+    this.tone(660 * f, 0.09, 'square', 0.1);
+    setTimeout(() => this.tone(990 * f, 0.14, 'square', 0.1), 90);
+  },
   smashSfx() { this.noise(0.25, 0.22); this.tone(220, 0.2, 'sawtooth', 0.08, -150); },
   crashSfx() { this.noise(0.45, 0.3); this.tone(120, 0.4, 'sawtooth', 0.15, -80); },
   pickupSfx() { this.tone(440, 0.08, 'square', 0.1, 220); setTimeout(() => this.tone(880, 0.1, 'square', 0.1), 70); },
   missSfx() { this.tone(200, 0.2, 'sawtooth', 0.08, -100); },
+  // quick filtered whoosh — a near miss should feel snappy, not celebratory
+  nearMissSfx() { this.noise(0.06, 0.05); this.tone(1500, 0.09, 'sine', 0.07, -1000); },
 };
 
 /* ---------- game state ---------- */
@@ -168,6 +175,11 @@ const game = {
   entities: [],   // houses, mailboxes, obstacles, bundles
   thrown: [],     // papers in flight
   popups: [],
+  particles: [],          // confetti bursts on delivery
+  slowmo: 0,              // seconds left running world-time at 0.35x
+  vignette: 0,            // fade timer for the max-combo flash
+  comboMult: 1,           // last multiplier tier reached, for COMBO x announces
+  maxComboFlashed: false, // whether the max-combo flash has fired this run
   nextActionD: 26,        // demand director: next point needing a reaction
   lastDeliverySide: 1,
   sceneryD: [40, 47],     // per-side fill of non-subscriber houses
@@ -213,6 +225,9 @@ function startLevel(L) {
   game.entities = [];
   game.thrown = [];
   game.popups = [];
+  game.particles = [];
+  game.slowmo = 0;
+  game.vignette = 0;
   game.nextActionD = 26;
   game.lastDeliverySide = 1;
   game.sceneryD = [40, 47];
@@ -342,6 +357,25 @@ function addPopup(text, sx, sy, color, big) {
   game.popups.push({ text, x: sx, y: sy, color, big: !!big, t: 0 });
 }
 
+// confetti: a tiny screen-space particle burst on a successful delivery.
+// simulated in screen space (not world space) since it's a one-shot visual
+// flourish, not something that needs to track a moving world point.
+const CONFETTI_COLORS = ['#ffd23f', '#7bff9b', '#7bd6ff', '#ff8fd1', '#ffffff'];
+function burstConfetti(sx, sy, count) {
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const spd = 60 + Math.random() * 150;
+    game.particles.push({
+      x: sx, y: sy,
+      vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 90,
+      rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 12,
+      size: 3 + Math.random() * 4,
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      t: 0, life: 0.55 + Math.random() * 0.2,
+    });
+  }
+}
+
 // scoring feedback the player can't miss: big, centered, high on the screen
 // (clear of the rider and the action on the road)
 function announce(text, color) {
@@ -352,6 +386,7 @@ function crash() {
   if (game.invuln > 0) return;
   game.lives--;
   game.streak = 0;
+  game.comboMult = 1;
   game.invuln = 2.2;
   game.shake = 0.5;
   game.speed = game.lp.baseSpeed;
@@ -380,6 +415,8 @@ function startGame() {
   game.score = 0;
   game.lives = START_LIVES;
   game.streak = 0;
+  game.comboMult = 1;
+  game.maxComboFlashed = false;
   game.papers = START_PAPERS;
   startLevel(1);
 }
@@ -465,10 +502,28 @@ function paperLands(p) {
         if (nearBox) mb.hit = true;
         game.streak++;
         game.delivered++;
-        const pts = (nearBox ? 250 : 100) * mult();
+        const nowMult = mult();
+        const pts = (nearBox ? 250 : 100) * nowMult;
         game.score += pts;
         announce(nearBox ? `MAILBOX! +${pts}` : `DELIVERED +${pts}`, '#7bff9b');
-        AudioFX.deliverSfx();
+        AudioFX.deliverSfx(game.streak);
+        const bp = project(px, 0.3, pd - game.dist + PLAYER_Z);
+        if (bp.s > 0) burstConfetti(bp.x, bp.y, nearBox ? 16 : 11);
+        // multiplier tier just crossed a /3 boundary — celebrate it
+        if (nowMult > game.comboMult) {
+          game.comboMult = nowMult;
+          announce(`COMBO x${nowMult}!`, '#ffd700');
+          if (nowMult >= 5 && !game.maxComboFlashed) {
+            game.maxComboFlashed = true;
+            game.vignette = 0.5;
+          }
+        }
+        // this throw met the level's quota — the finish line is still ahead,
+        // but the moment that matters just happened, so make it felt
+        if (game.delivered === game.target) {
+          game.slowmo = 0.4;
+          announce('QUOTA MET!', '#ffd700');
+        }
         scored = true;
         break;
       }
@@ -493,9 +548,15 @@ function paperLands(p) {
 }
 
 /* ---------- update ---------- */
-function update(dt) {
-  game.time += dt;
+function update(realDt) {
+  game.time += realDt;
   if (game.mode !== 'playing') return;
+
+  // slow-mo: briefly stretches world time on the level's final delivery.
+  // popups/particles below run on realDt so the celebration itself still
+  // pops at full speed while the world around it eases up.
+  game.slowmo = Math.max(0, game.slowmo - realDt);
+  const dt = game.slowmo > 0 ? realDt * 0.35 : realDt;
 
   game.speed = Math.min(game.lp.maxSpeed, game.speed + SPEED_RAMP * dt);
 
@@ -542,6 +603,21 @@ function update(dt) {
         Math.abs(e.x - game.player.x) < e.wW / 2 + 0.55) {
       crash();
     }
+    // near miss: the instant an obstacle passes behind the rider without a
+    // crash, check how close it actually was — reward a tight dodge once per
+    // obstacle. skipped while invulnerable so post-crash ghosting can't farm it.
+    if ((e.kind === 'car' || e.kind === 'dog' || e.kind === 'bin' || e.kind === 'drain') &&
+        !e.nearMiss && e.d < game.dist) {
+      e.nearMiss = true;
+      const edge = e.wW / 2 + 0.55;
+      const lat = Math.abs(e.x - game.player.x);
+      if (game.invuln <= 0 && lat >= edge && lat < edge + 1.5) {
+        game.score += 25;
+        const proj = project(e.x, 0.6, PLAYER_Z);
+        if (proj.s > 0) addPopup('CLOSE! +25', proj.x, proj.y, '#9ff5ff');
+        AudioFX.nearMissSfx();
+      }
+    }
     if (e.kind === 'bundle' && !e.taken &&
         Math.abs(e.d - game.dist) < 1.0 &&
         Math.abs(e.x - game.player.x) < 1.3) {
@@ -553,6 +629,7 @@ function update(dt) {
     if (e.kind === 'house' && e.sub && !e.delivered && !e.missed && e.d < game.dist - 2) {
       e.missed = true;
       game.streak = 0;
+      game.comboMult = 1;
       announce('MISSED HOUSE', '#ff9955');
       AudioFX.missSfx();
     }
@@ -586,12 +663,26 @@ function update(dt) {
   // cull entities behind the camera
   game.entities = game.entities.filter(e => e.d > game.dist - PLAYER_Z);
 
-  // popups
+  // popups — real time, so the feedback still pops at full speed in slow-mo
   for (let i = game.popups.length - 1; i >= 0; i--) {
     const pp = game.popups[i];
-    pp.t += dt;
+    pp.t += realDt;
     if (pp.t > (pp.big ? 1.5 : 1.2)) game.popups.splice(i, 1);
   }
+
+  // confetti particles — also real time, plain gravity + drift in screen space
+  for (let i = game.particles.length - 1; i >= 0; i--) {
+    const q = game.particles[i];
+    q.t += realDt;
+    if (q.t > q.life) { game.particles.splice(i, 1); continue; }
+    q.vy += 900 * realDt;
+    q.x += q.vx * realDt;
+    q.y += q.vy * realDt;
+    q.rot += q.vr * realDt;
+  }
+
+  // max-combo flash fade
+  game.vignette = Math.max(0, game.vignette - realDt);
 }
 
 /* ---------- render ---------- */
@@ -790,6 +881,18 @@ function render() {
     ctx.drawImage(img, p.x - dw / 2, p.y - dh + bob, dw, dh);
   }
 
+  // confetti — quick celebratory burst on a successful delivery
+  for (const q of game.particles) {
+    ctx.globalAlpha = Math.max(0, 1 - q.t / q.life);
+    ctx.save();
+    ctx.translate(q.x, q.y);
+    ctx.rotate(q.rot);
+    ctx.fillStyle = q.color;
+    ctx.fillRect(-q.size / 2, -q.size / 2, q.size, q.size);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+
   // popups — big announcements pop in at the centre, small ones drift up
   ctx.textAlign = 'center';
   let bigRow = 0;
@@ -819,6 +922,16 @@ function render() {
     ctx.globalAlpha = 1;
   }
 
+  // max-combo flash: a quick green edge-glow the first time the streak caps out
+  if (game.vignette > 0) {
+    const a = game.vignette / 0.5;
+    const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.72);
+    grad.addColorStop(0, 'rgba(60,255,120,0)');
+    grad.addColorStop(1, `rgba(60,255,120,${0.55 * a})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   renderHUD();
   ctx.restore();
 }
@@ -833,8 +946,22 @@ function renderHUD() {
   ctx.fillStyle = '#fff';
   ctx.fillText(`SCORE ${game.score}`, 10, fs * 1.4);
   if (mult() > 1) {
+    const m = mult();
+    const label = `x${m}`;
+    const lx = 10 + ctx.measureText(`SCORE ${game.score}`).width + 12;
     ctx.fillStyle = '#7bff9b';
-    ctx.fillText(`x${mult()}`, 10 + ctx.measureText(`SCORE ${game.score}`).width + 12, fs * 1.4);
+    ctx.fillText(label, lx, fs * 1.4);
+    // 3 pips show progress toward the next tier; full + gold once maxed
+    const atMax = m >= 5;
+    const filled = atMax ? 3 : game.streak % 3;
+    const pr = fs * 0.09;
+    const pipX = lx + ctx.measureText(label).width + 10;
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath();
+      ctx.arc(pipX + i * pr * 2.8, fs * 1.15, pr, 0, Math.PI * 2);
+      ctx.fillStyle = atMax ? '#ffd700' : (i < filled ? '#7bff9b' : 'rgba(255,255,255,0.25)');
+      ctx.fill();
+    }
   }
   // lives
   ctx.fillStyle = '#ff5f7a';
