@@ -48,9 +48,13 @@ const SPRITES = {
   ped2:    { file: 'ped2.webp',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 1) },
   ped_hit: { file: 'ped_hit.webp', w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 2) },
 
-  // scenery / ui
-  skyline: { file: 'skyline.webp', w: 1024, h: 256, draw: drawSkyline },
-  logo:    { file: 'logo.webp',    w: 640,  h: 300, draw: drawLogo },
+  // scenery / ui — skyline is the dusk strip (used for dusk + night phases);
+  // skyline_day is the bright variant used every third level (see PHASES in
+  // game.js). Same placeholder painter for both since the painter's dusk
+  // look is a fine stand-in until the real art loads.
+  skyline:     { file: 'skyline.webp',     w: 1024, h: 256, draw: drawSkyline },
+  skyline_day: { file: 'skyline_day.webp', w: 1024, h: 256, draw: drawSkyline },
+  logo:        { file: 'logo.webp',        w: 640,  h: 300, draw: drawLogo },
 };
 
 // Fills `out` with placeholder canvases synchronously so the game is

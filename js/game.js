@@ -92,13 +92,107 @@ const CHARACTERS = [
     id: 'skye', prefix: 'player3', name: 'Skye', tagline: 'Rollerblades',
     desc: '“Silent, smooth, and impossible to knock off her feet.”',
     speedMult: 0.85, steerMult: 1.25, speedPips: 2, handlingPips: 5,
+    unlockType: 'delivered', unlockAt: 25,
   },
   {
     id: 'stan', prefix: 'player4', name: 'Grandpa Stan', tagline: 'Moped',
     desc: "Can't be bothered getting out of bed? Send Grandpa instead.",
     speedMult: 1.18, steerMult: 0.72, speedPips: 5, handlingPips: 2,
+    unlockType: 'level', unlockAt: 5,
   },
 ];
+
+/* ---------- meta-progression: lifetime stats + rider unlocks ----------
+ * Persisted under one JSON key so it's easy to inspect/reset. `unlocked` is
+ * only for grandfathering — a rider that meets its threshold is already
+ * unlocked via lifetimeDelivered/maxLevelReached without ever touching it.
+ */
+const PROGRESS_KEY = 'paperoo_progress';
+function loadProgress() {
+  let fresh = false;
+  let p;
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    if (raw) p = JSON.parse(raw); else fresh = true;
+  } catch (e) { fresh = true; }
+  if (!p || typeof p !== 'object') { p = {}; fresh = true; }
+  p.lifetimeDelivered = Number(p.lifetimeDelivered) || 0;
+  p.maxLevelReached = Number(p.maxLevelReached) || 0;
+  p.unlocked = Array.isArray(p.unlocked) ? p.unlocked : [];
+  p._fresh = fresh; // not persisted — just tells the grandfather check below
+  return p;
+}
+let progress = loadProgress();
+function saveProgress() {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify({
+      lifetimeDelivered: progress.lifetimeDelivered,
+      maxLevelReached: progress.maxLevelReached,
+      unlocked: progress.unlocked,
+    }));
+  } catch (e) { /* storage unavailable — unlocks just won't persist */ }
+}
+function isUnlocked(c, prog = progress) {
+  if (!c.unlockType) return true; // zoe/milo are free
+  if (prog.unlocked.includes(c.id)) return true;
+  if (c.unlockType === 'delivered') return prog.lifetimeDelivered >= c.unlockAt;
+  if (c.unlockType === 'level') return prog.maxLevelReached >= c.unlockAt;
+  return true;
+}
+// a returning player who already had a saved Skye/Stan choice keeps it —
+// their progress file didn't exist yet, so the new thresholds would
+// otherwise lock them out of a rider they already picked
+if (progress._fresh) {
+  const savedId = localStorage.getItem('paperperson_character');
+  const savedChar = CHARACTERS.find(c => c.id === savedId);
+  if (savedChar && savedChar.unlockType && !progress.unlocked.includes(savedId)) {
+    progress.unlocked.push(savedId);
+  }
+}
+saveProgress();
+
+// fires when a run's progress update (level reached / lifetime deliveries)
+// crosses a rider's unlock threshold, so the end screen can call it out
+function checkNewUnlocks(unlockedBefore) {
+  for (const c of CHARACTERS) {
+    if (!unlockedBefore.has(c.id) && isUnlocked(c) && !game.newlyUnlocked.includes(c.id)) {
+      game.newlyUnlocked.push(c.id);
+    }
+  }
+}
+function bumpMaxLevel(L) {
+  if (L <= progress.maxLevelReached) return;
+  const before = new Set(CHARACTERS.filter(c => isUnlocked(c)).map(c => c.id));
+  progress.maxLevelReached = L;
+  saveProgress();
+  checkNewUnlocks(before);
+}
+function bumpLifetimeDelivered(n) {
+  if (n <= 0) return;
+  const before = new Set(CHARACTERS.filter(c => isUnlocked(c)).map(c => c.id));
+  progress.lifetimeDelivered += n;
+  saveProgress();
+  checkNewUnlocks(before);
+}
+
+/* ---------- day/night cycle ----------
+ * The street's palette cycles by level: dusk -> night -> day -> repeat.
+ * Sky colour for the art-based phases is sampled from the matching skyline
+ * image (see sampleSkyTopColor); night reuses the dusk skyline but darkens
+ * everything so it reads as "later," and gives subscriber windows a soft
+ * glow so they still pop against the dimmer street.
+ */
+const PHASES = [
+  { name: 'dusk',  skylineKey: 'skyline',     skyMul: 1,    grass: '#2e7d43', sidewalk: '#8a8a96', road: '#3c3c46', line: '#d8d8dc', dash: '#e8d44d', houseGlow: 0 },
+  { name: 'night', skylineKey: 'skyline',     skyMul: 0.42, grass: '#173a22', sidewalk: '#4c4c58', road: '#1c1c26', line: '#82828e', dash: '#a89830', houseGlow: 0.4 },
+  { name: 'day',   skylineKey: 'skyline_day', skyMul: 1,    grass: '#3f9c58', sidewalk: '#b0b0ba', road: '#4c4c58', line: '#f5f5f8', dash: '#ffe066', houseGlow: 0 },
+];
+// daily mode shares one time-of-day across the whole route (picked from the
+// day's seed); endless cycles it every level so each street feels distinct
+function currentPhaseIndex() {
+  if (game.dailyMode) return ((game.dailyNumber % 3) + 3) % 3;
+  return (game.level - 1) % 3;
+}
 
 /* ---------- canvas / layout ---------- */
 const canvas = document.getElementById('gameCanvas');
@@ -113,10 +207,19 @@ const dailyBtn = document.getElementById('dailyBtn');
 const dailyNumSpan = document.getElementById('dailyNumSpan');
 const logoImg = document.getElementById('logoImg');
 const charSelect = document.getElementById('charSelect');
+const charSelectGrid = document.getElementById('charSelectGrid');
+const charGoBtn = document.getElementById('charGoBtn');
 const btnThrowL = document.getElementById('btnThrowL');
 const btnThrowR = document.getElementById('btnThrowR');
 const muteBtn = document.getElementById('muteBtn');
 const pauseBtn = document.getElementById('pauseBtn');
+const controlsEl = document.getElementById('controls');
+const unlockBanner = document.getElementById('unlockBanner');
+const statDelivered = document.getElementById('statDelivered');
+const statAccuracy = document.getElementById('statAccuracy');
+const statStreak = document.getElementById('statStreak');
+const statBonks = document.getElementById('statBonks');
+const statSmashes = document.getElementById('statSmashes');
 
 let W = 0, H = 0; // css pixels
 
@@ -228,6 +331,10 @@ const game = {
   daySeedBase: 0,         // seeded from the date (daily) or Math.random (endless) at startGame
   runDelivered: 0,        // deliveries made across the whole run, for share text
   runQuota: 0,            // sum of subsTotal across levels played, for share text
+  runThrown: 0,           // papers thrown this run, for run-end accuracy
+  runBonks: 0,            // pedestrian bullseyes this run
+  runSmashes: 0,          // non-subscriber window smashes this run
+  newlyUnlocked: [],       // rider ids unlocked during this run, for the end-screen banner
   invuln: 0,
   shake: 0,
   time: 0,
@@ -250,7 +357,12 @@ const game = {
   subsScheduled: 0,
   finishD: null,          // where this level's finish line sits
   best: Number(localStorage.getItem('paperperson_best') || 0),
-  character: CHARACTERS.find(c => c.id === localStorage.getItem('paperperson_character')) || CHARACTERS[0],
+  // a saved character that's somehow locked (fresh browser profile, cleared
+  // progress, etc.) falls back to Zoe rather than starting a run as nobody
+  character: (() => {
+    const saved = CHARACTERS.find(c => c.id === localStorage.getItem('paperperson_character'));
+    return (saved && isUnlocked(saved)) ? saved : CHARACTERS[0];
+  })(),
 };
 
 // each level runs the director a little hotter, scaled by the rider's own
@@ -267,6 +379,8 @@ function levelParams(L, speedMult) {
 
 function startLevel(L) {
   game.level = L;
+  bumpMaxLevel(L); // Grandpa Stan unlocks the first time endless reaches level 5
+  unlockBanner.classList.add('hidden'); // only the actual run-end screen shows this
   // seeded once per level, keyed on (daySeed, level) — never depends on how
   // many rng calls the previous level consumed, so the same daily seed
   // always produces the identical street regardless of play style
@@ -304,6 +418,13 @@ function startLevel(L) {
   LeaderboardUI.hide();
   Music.start('game');
   Music.setIntensity(Math.min(3, game.level - 1));
+  // daily mode shares one time-of-day for the whole route, so only announce
+  // it once at street 1 rather than repeating it every level
+  if (!game.dailyMode || L === 1) {
+    const phaseName = PHASES[currentPhaseIndex()].name;
+    if (phaseName === 'night') announce('NIGHT SHIFT', '#9fd6ff');
+    else if (phaseName === 'day') announce('DAYBREAK', '#ffe066');
+  }
 }
 
 const mult = () => 1 + Math.min(4, Math.floor(game.streak / 3));
@@ -408,6 +529,7 @@ function throwPaper(dir) { // dir: -1 left, +1 right
     return;
   }
   game.papers--;
+  game.runThrown++;
   game.throwCd = THROW_COOLDOWN;
   // the paper always lands THROW_LEAD ahead of the throw point, i.e. exactly
   // on the target ring, regardless of ride speed. Laterally it steers toward
@@ -506,6 +628,30 @@ function updateDailyBest() {
   return Math.max(game.score, prevBest);
 }
 
+// per-run stats block (delivered / accuracy / best streak / bonks / smashes)
+// shown on both end-of-run cards, above the leaderboard
+function renderStatsCard() {
+  const acc = game.runThrown > 0 ? Math.round((game.runDelivered / game.runThrown) * 100) : 0;
+  statDelivered.textContent = game.runDelivered;
+  statAccuracy.textContent = `${acc}%`;
+  statStreak.textContent = game.bestStreak;
+  statBonks.textContent = game.runBonks;
+  statSmashes.textContent = game.runSmashes;
+}
+
+// a bold callout on the end screen when this run's progress crossed a
+// rider's unlock threshold (see bumpMaxLevel / bumpLifetimeDelivered)
+function renderUnlockBanner() {
+  if (game.newlyUnlocked.length) {
+    unlockBanner.textContent = game.newlyUnlocked
+      .map(id => `NEW RIDER UNLOCKED — ${CHARACTERS.find(c => c.id === id).name.toUpperCase()}!`)
+      .join('\n');
+    unlockBanner.classList.remove('hidden');
+  } else {
+    unlockBanner.classList.add('hidden');
+  }
+}
+
 function endGame(reason) {
   game.mode = 'gameover';
   game.paused = false;
@@ -515,12 +661,15 @@ function endGame(reason) {
     localStorage.setItem('paperperson_best', String(game.best));
   }
   if (game.dailyMode) updateDailyBest();
+  bumpLifetimeDelivered(game.runDelivered);
   overlayTitle.style.display = '';
   overlayTitle.textContent = 'GAME OVER';
   logoImg.style.display = 'none';
   const lines = reason ? `${reason}\n` : '';
   overlayText.textContent = `${lines}SCORE ${game.score}\nBEST ${game.best}`;
   overlayPrompt.textContent = '';
+  renderStatsCard();
+  renderUnlockBanner();
   overlay.classList.remove('hidden');
   LeaderboardUI.show(game.score, game.level, currentBoardId());
 }
@@ -536,11 +685,14 @@ function finishDailyRoute() {
     localStorage.setItem('paperperson_best', String(game.best));
   }
   const dailyBest = updateDailyBest();
+  bumpLifetimeDelivered(game.runDelivered);
   overlayTitle.style.display = '';
   overlayTitle.textContent = 'ROUTE COMPLETE!';
   logoImg.style.display = 'none';
   overlayText.textContent = `SCORE ${game.score}\nBEST TODAY ${dailyBest}`;
   overlayPrompt.textContent = '';
+  renderStatsCard();
+  renderUnlockBanner();
   overlay.classList.remove('hidden');
   LeaderboardUI.show(game.score, game.level, currentBoardId());
 }
@@ -555,6 +707,10 @@ function startGame() {
   game.papers = START_PAPERS;
   game.runDelivered = 0;
   game.runQuota = 0;
+  game.runThrown = 0;
+  game.runBonks = 0;
+  game.runSmashes = 0;
+  game.newlyUnlocked = [];
   // endless reseeds fresh every run; daily locks to the calendar date so
   // every player's route is identical
   game.daySeedBase = game.dailyMode ? game.dailyNumber : ((Math.random() * 4294967296) >>> 0);
@@ -564,6 +720,8 @@ function startGame() {
 function showCharSelect() {
   game.mode = 'select';
   overlay.classList.add('hidden');
+  unlockBanner.classList.add('hidden');
+  populateCharSelect(); // rebuild so unlocks earned just now show up unlocked
   charSelect.classList.remove('hidden');
   LeaderboardUI.hide();
 }
@@ -656,6 +814,7 @@ function paperLands(p) {
   for (const e of game.entities) {
     if (e.kind === 'ped' && !e.hit && Math.abs(e.d - pd) < 1.7 && Math.abs(e.x - px) < 1.4) {
       e.hit = true;
+      game.runBonks++;
       const pts = 200;
       game.score += pts;
       announce(`BONK! +${pts}`, '#ffb347');
@@ -705,6 +864,7 @@ function paperLands(p) {
     if (e.kind === 'house' && !e.sub && !e.delivered && Math.sign(px) === e.side) {
       if (Math.abs(e.d - pd) < 3.5 && Math.abs(px) > HOUSE_X - 3.5) {
         e.delivered = true; // one smash per house
+        game.runSmashes++;
         const pts = 50;
         game.score += pts;
         announce(`SMASH! +${pts}`, '#ffd23f');
@@ -881,10 +1041,15 @@ function render() {
     ctx.translate((Math.random() - 0.5) * 14 * game.shake, (Math.random() - 0.5) * 10 * game.shake);
   }
 
+  // day/night: which palette this level (or, in daily mode, this whole
+  // route) is using — see PHASES for the per-phase colours
+  const phase = PHASES[currentPhaseIndex()];
+
   // sky + skyline strip (slight parallax against steering)
-  ctx.fillStyle = skyTopColor;
+  const baseSky = skySamples[phase.skylineKey] || '#1c2e5e';
+  ctx.fillStyle = phase.skyMul !== 1 ? scaleRgbString(baseSky, phase.skyMul) : baseSky;
   ctx.fillRect(-20, -20, W + 40, cam.horizon + 20);
-  const sk = sprites.skyline;
+  const sk = sprites[phase.skylineKey];
   const skH = Math.min(cam.horizon * 0.85, 200);
   const skW = skH * (sk.width / sk.height);
   const par = -camX * 14;
@@ -893,7 +1058,7 @@ function render() {
   }
 
   // grass
-  ctx.fillStyle = '#2e7d43';
+  ctx.fillStyle = phase.grass;
   ctx.fillRect(-20, cam.horizon, W + 40, H - cam.horizon + 20);
 
   const zNear = Math.max(1.6, (cam.h * cam.f) / (H - cam.horizon) * 0.9);
@@ -909,13 +1074,13 @@ function render() {
     ctx.closePath();
     ctx.fill();
   };
-  quad(-ROAD_HALF - SIDEWALK, ROAD_HALF + SIDEWALK, '#8a8a96');
-  quad(-ROAD_HALF, ROAD_HALF, '#3c3c46');
-  quad(-ROAD_HALF - 0.18, -ROAD_HALF + 0.18, '#d8d8dc');
-  quad(ROAD_HALF - 0.18, ROAD_HALF + 0.18, '#d8d8dc');
+  quad(-ROAD_HALF - SIDEWALK, ROAD_HALF + SIDEWALK, phase.sidewalk);
+  quad(-ROAD_HALF, ROAD_HALF, phase.road);
+  quad(-ROAD_HALF - 0.18, -ROAD_HALF + 0.18, phase.line);
+  quad(ROAD_HALF - 0.18, ROAD_HALF + 0.18, phase.line);
 
   // scrolling centre dashes
-  ctx.fillStyle = '#e8d44d';
+  ctx.fillStyle = phase.dash;
   const step = 6;
   for (let d = Math.floor((game.dist + zNear) / step) * step; d < game.dist + DRAW_FAR; d += step) {
     const z1 = d - game.dist, z2 = z1 + 2.4;
@@ -994,6 +1159,14 @@ function render() {
       ctx.fillStyle = `rgba(123,214,255,${0.28 + 0.14 * Math.sin(game.time * 6)})`;
       ctx.beginPath();
       ctx.ellipse(p.x, p.y, dw * 1.0, dw * 0.34, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // at night, subscriber windows get a warm glow so lit houses still read
+    // clearly against the darker street (the art itself doesn't change)
+    if (e.kind === 'house' && e.sub && !e.delivered && phase.houseGlow > 0) {
+      ctx.fillStyle = `rgba(255,214,110,${phase.houseGlow * (0.65 + 0.25 * Math.sin(game.time * 3 + e.d))})`;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - dh * 0.42, dw * 0.5, dh * 0.3, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     // dog art faces right (mirror when running left); pedestrians on the
@@ -1227,8 +1400,50 @@ bindHold(document.getElementById('btnRight'), () => { steer.right = true; applyS
 bindHold(document.getElementById('btnThrowL'), () => throwPaper(-1), () => {});
 bindHold(document.getElementById('btnThrowR'), () => throwPaper(1), () => {});
 
+/* ---------- input mode: touch deck vs. desktop keyboard ----------
+ * A real keydown means this is a keyboard user — the touch deck collapses
+ * to a slim key-hint bar and the title prompt switches to key wording. A
+ * pointerdown landing on the controls (a touch-screen laptop, say) flips
+ * it back, live.
+ */
+function isDesktopMode() { return document.body.classList.contains('kbd-mode'); }
+function usesFinePointer() { return !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches); }
+function updateInputModeUI() {
+  if (game.mode === 'title') {
+    overlayPrompt.textContent = isDesktopMode() ? 'PRESS SPACE TO RIDE' : 'TAP A MODE TO RIDE';
+  }
+}
+window.addEventListener('keydown', () => {
+  if (!isDesktopMode()) {
+    document.body.classList.add('kbd-mode');
+    updateInputModeUI();
+  }
+}, true);
+controlsEl.addEventListener('pointerdown', () => {
+  if (isDesktopMode()) {
+    document.body.classList.remove('kbd-mode');
+    updateInputModeUI();
+  }
+});
+
 window.addEventListener('keydown', e => {
   if (e.repeat) return;
+  // char select has its own arrow/Enter navigation and must keep working
+  // even if a card/GO button currently has focus (e.g. via Tab) — so it
+  // runs before the "don't drive the game while a button has focus" guard
+  // below, which exists for other screens' buttons/inputs
+  if (game.mode === 'select') {
+    AudioFX.init();
+    Music.init();
+    switch (e.code) {
+      case 'ArrowLeft': moveCharSel(-1); break;
+      case 'ArrowRight': moveCharSel(1); break;
+      case 'ArrowUp': moveCharSel(-2); break;
+      case 'ArrowDown': moveCharSel(2); break;
+      case 'Enter': case 'Space': confirmCharSelection(); break;
+    }
+    return;
+  }
   // typing a leaderboard name must not drive the game
   if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
   // on game over the panel's buttons drive the flow, not Space/Enter
@@ -1321,15 +1536,85 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && game.mode === 'playing' && !game.paused) setPaused(true);
 });
 
-/* ---------- character select screen ---------- */
+/* ---------- character select screen ----------
+ * Confirming a rider is two different flows depending on pointer type:
+ *  - fine pointer (mouse/trackpad): a plain click on an unlocked card
+ *    starts the run immediately, same as before this wave.
+ *  - coarse pointer (touch): the first tap only *selects* a card (blue
+ *    border, GO! button appears) — a stray scroll-tap can no longer launch
+ *    a run by accident. A second tap, on GO or on the same card again,
+ *    confirms. Arrow keys + Enter drive the same selection state.
+ */
 const pips = (n, max = 5) => '●'.repeat(n) + '○'.repeat(max - n);
+let pendingCharId = null; // selected-but-not-yet-confirmed rider (two-step flow)
+let charSelIndex = 0;     // keyboard cursor into CHARACTERS
+
+function unlockRequirementText(c) {
+  if (c.unlockType === 'delivered') {
+    return `${Math.min(progress.lifetimeDelivered, c.unlockAt)}/${c.unlockAt} PAPERS DELIVERED`;
+  }
+  if (c.unlockType === 'level') return `REACH LEVEL ${c.unlockAt}`;
+  return '';
+}
+
+function focusCharCard(id) {
+  charSelectGrid.querySelectorAll('.charCard').forEach(el => {
+    el.classList.toggle('selected', el.dataset.charId === id);
+  });
+}
+
+// step one: highlight a card and reveal the GO! button, without starting
+function selectCharCard(id) {
+  const c = CHARACTERS.find(ch => ch.id === id);
+  if (!c || !isUnlocked(c)) return;
+  pendingCharId = id;
+  const idx = CHARACTERS.findIndex(ch => ch.id === id);
+  if (idx >= 0) charSelIndex = idx;
+  focusCharCard(id);
+  charGoBtn.classList.remove('hidden');
+}
+
+// tapping/pressing Enter on a card: select it, or confirm if it was already selected
+function activateCard(id) {
+  const c = CHARACTERS.find(ch => ch.id === id);
+  if (!c || !isUnlocked(c)) return;
+  AudioFX.init();
+  Music.init();
+  if (pendingCharId === id) pickCharacter(id);
+  else selectCharCard(id);
+}
+
+function confirmCharSelection() {
+  const c = CHARACTERS[charSelIndex];
+  if (c) activateCard(c.id);
+}
+
+function moveCharSel(delta) {
+  const n = CHARACTERS.length;
+  charSelIndex = (charSelIndex + delta + n) % n;
+  const c = CHARACTERS[charSelIndex];
+  if (isUnlocked(c)) {
+    selectCharCard(c.id);
+  } else {
+    // locked cards can be focused for keyboard nav, just not confirmed
+    pendingCharId = null;
+    focusCharCard(c.id);
+    charGoBtn.classList.add('hidden');
+  }
+}
 
 function populateCharSelect() {
-  const grid = document.getElementById('charSelectGrid');
+  pendingCharId = null;
+  charSelIndex = 0;
+  charGoBtn.classList.add('hidden');
+  charSelectGrid.innerHTML = '';
   for (const c of CHARACTERS) {
+    const unlocked = isUnlocked(c);
     const card = document.createElement('button');
-    card.className = 'charCard';
-    card.innerHTML = `
+    card.className = 'charCard' + (unlocked ? '' : ' locked');
+    card.dataset.charId = c.id;
+    card.disabled = !unlocked;
+    card.innerHTML = unlocked ? `
       <img class="charThumb" src="assets/${c.prefix}_straight.webp" alt="${c.name}" draggable="false">
       <div class="charName">${c.name}</div>
       <div class="charTag">${c.tagline}</div>
@@ -1337,18 +1622,36 @@ function populateCharSelect() {
       <div class="charStats">
         <div class="charStatRow"><span>SPEED</span><span class="charPips">${pips(c.speedPips)}</span></div>
         <div class="charStatRow"><span>HANDLING</span><span class="charPips">${pips(c.handlingPips)}</span></div>
-      </div>`;
-    card.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      e.stopPropagation();
+      </div>` : `
+      <img class="charThumb" src="assets/${c.prefix}_straight.webp" alt="${c.name}" draggable="false">
+      <div class="charName">${c.name}</div>
+      <div class="charLockTag">\u{1F512} LOCKED</div>
+      <div class="charReq">${unlockRequirementText(c)}</div>`;
+    // fine pointer: a plain click starts the run immediately
+    card.addEventListener('click', () => {
+      if (!usesFinePointer() || !unlocked) return;
       AudioFX.init();
       Music.init();
       pickCharacter(c.id);
     });
-    grid.appendChild(card);
+    // coarse pointer: pointerdown drives the two-step select/confirm flow
+    card.addEventListener('pointerdown', e => {
+      if (usesFinePointer()) return; // the click handler above owns mouse/trackpad
+      e.preventDefault();
+      e.stopPropagation();
+      if (!unlocked) return;
+      activateCard(c.id);
+    });
+    charSelectGrid.appendChild(card);
   }
 }
 populateCharSelect();
+
+charGoBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  confirmCharSelection();
+});
 
 /* ---------- main loop ---------- */
 let lastT = 0;
@@ -1360,17 +1663,26 @@ function frame(t) {
   requestAnimationFrame(frame);
 }
 
-// flat sky fill above the strip, sampled from the skyline art so they meet
-// seamlessly whatever the strip's top color is
-let skyTopColor = '#1c2e5e';
+// flat sky fill above each skyline strip, sampled from the art so they meet
+// seamlessly whatever the strip's top color is — one sample per skyline
+// image (dusk/night share 'skyline', day uses 'skyline_day')
+let skySamples = { skyline: '#1c2e5e', skyline_day: '#8fc7ff' };
 
-function sampleSkyTopColor() {
+function sampleSkyTopColor(key) {
   const sample = document.createElement('canvas');
   sample.width = sample.height = 4;
   const sctx = sample.getContext('2d');
-  sctx.drawImage(sprites.skyline, 0, 0);
+  sctx.drawImage(sprites[key], 0, 0);
   const d = sctx.getImageData(1, 1, 1, 1).data;
-  skyTopColor = `rgb(${d[0]},${d[1]},${d[2]})`;
+  skySamples[key] = `rgb(${d[0]},${d[1]},${d[2]})`;
+}
+
+// darkens a sampled "rgb(r,g,b)" string for the night phase
+function scaleRgbString(rgbStr, factor) {
+  const m = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/.exec(rgbStr);
+  if (!m) return rgbStr;
+  const clamp = v => Math.max(0, Math.min(255, Math.round(v)));
+  return `rgb(${clamp(m[1] * factor)},${clamp(m[2] * factor)},${clamp(m[3] * factor)})`;
 }
 
 function setLogoImg() {
@@ -1383,13 +1695,15 @@ function setLogoImg() {
 // screen and game are usable on the very first frame instead of waiting
 // on every asset in the game to load.
 sprites = loadSprites((key) => {
-  if (key === 'skyline') sampleSkyTopColor();
+  if (key === 'skyline' || key === 'skyline_day') sampleSkyTopColor(key);
   if (key === 'logo') setLogoImg();
 });
-sampleSkyTopColor();
+sampleSkyTopColor('skyline');
+sampleSkyTopColor('skyline_day');
 setLogoImg();
 dailyNumSpan.textContent = String(game.dailyNumber);
 resize();
+updateInputModeUI(); // sets the title prompt's initial (touch-style) wording
 Music.start('title'); // safe pre-gesture: just records intent until Music.init() resumes the context
 requestAnimationFrame(frame);
 resize();
