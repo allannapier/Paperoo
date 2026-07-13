@@ -13,17 +13,25 @@
  *     js/config.js as LEADERBOARD_URL, commit, push.
  *
  * API (matches js/leaderboard.js):
- *   GET  -> { scores: [{ name, score, level }, ...] } top 25, best first
- *   POST JSON { name, score, level } -> { ok: true, scores: [...] }
+ *   GET  ?board=B -> { scores: [{ name, score, level }, ...] } top 25, best first
+ *                    board defaults to 'global' when omitted
+ *   POST JSON { name, score, level, board } -> { ok: true, scores: [...], rank }
+ *     board is 'global' (endless) or 'daily-YYYYMMDD' (a Daily Route);
+ *     anything else falls back to 'global'. rank is the submitter's 1-based
+ *     placement within that board (ties broken by submission order).
  *
- * The table is created automatically on first use. Input is sanitized and
- * clamped server-side; only the top 500 scores are kept. It's a friendly
- * arcade board, not a tamper-proof one — you can delete rows in the D1
- * console (Storage & Databases -> D1 -> your database -> scores table).
+ * The table is created automatically on first use, including a migration
+ * for boards deployed before the `board` column existed. Input is sanitized
+ * and clamped server-side; only the top KEEP_ROWS scores PER BOARD are kept,
+ * so a busy daily board can't crowd out the global board's history (or vice
+ * versa). It's a friendly arcade board, not a tamper-proof one — you can
+ * delete rows in the D1 console (Storage & Databases -> D1 -> your
+ * database -> scores table).
  */
 
 const TOP_N = 25;
 const KEEP_ROWS = 500;
+const BOARD_RE = /^(global|daily-\d{8})$/;
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -38,19 +46,32 @@ function json(obj, status = 200) {
   });
 }
 
+function sanitizeBoard(raw) {
+  const s = String(raw || '');
+  return BOARD_RE.test(s) ? s : 'global';
+}
+
 let tableReady = false;
 async function ensureTable(db) {
   if (tableReady) return;
   await db.exec(
-    'CREATE TABLE IF NOT EXISTS scores (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, score INTEGER NOT NULL, level INTEGER NOT NULL, created_at TEXT NOT NULL)'
+    "CREATE TABLE IF NOT EXISTS scores (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, score INTEGER NOT NULL, level INTEGER NOT NULL, created_at TEXT NOT NULL, board TEXT NOT NULL DEFAULT 'global')"
   );
+  // backward-compat migration: worker deployments from before the Daily
+  // Route feature have a `scores` table with no `board` column. ALTER TABLE
+  // throws if the column is already there (fresh DBs created by the
+  // CREATE TABLE above already have it) — that failure is expected and safe
+  // to swallow, it just means this DB has already been migrated.
+  try {
+    await db.exec("ALTER TABLE scores ADD COLUMN board TEXT NOT NULL DEFAULT 'global'");
+  } catch (e) { /* column already exists */ }
   tableReady = true;
 }
 
-async function topScores(db) {
+async function topScores(db, board) {
   const { results } = await db
-    .prepare('SELECT name, score, level FROM scores ORDER BY score DESC, id ASC LIMIT ?')
-    .bind(TOP_N)
+    .prepare('SELECT name, score, level FROM scores WHERE board = ? ORDER BY score DESC, id ASC LIMIT ?')
+    .bind(board, TOP_N)
     .all();
   return results;
 }
@@ -61,9 +82,11 @@ export default {
 
     try {
       await ensureTable(env.DB);
+      const url = new URL(req.url);
 
       if (req.method === 'GET') {
-        return json({ scores: await topScores(env.DB) });
+        const board = sanitizeBoard(url.searchParams.get('board'));
+        return json({ scores: await topScores(env.DB, board) });
       }
 
       if (req.method === 'POST') {
@@ -73,18 +96,32 @@ export default {
           .replace(/[^\w \-\.\!\?]/g, '').slice(0, 12) || 'ANON';
         const score = Math.max(0, Math.min(99999999, Math.floor(Number(data.score) || 0)));
         const level = Math.max(1, Math.min(99, Math.floor(Number(data.level) || 1)));
+        const board = sanitizeBoard(data.board);
 
-        await env.DB
-          .prepare('INSERT INTO scores (name, score, level, created_at) VALUES (?, ?, ?, ?)')
-          .bind(name, score, level, new Date().toISOString())
+        const inserted = await env.DB
+          .prepare('INSERT INTO scores (name, score, level, created_at, board) VALUES (?, ?, ?, ?, ?)')
+          .bind(name, score, level, new Date().toISOString(), board)
           .run();
-        // keep only the best KEEP_ROWS entries
+        const newId = inserted.meta && inserted.meta.last_row_id;
+
+        // keep only the best KEEP_ROWS entries for THIS board
         await env.DB
-          .prepare('DELETE FROM scores WHERE id NOT IN (SELECT id FROM scores ORDER BY score DESC, id ASC LIMIT ?)')
-          .bind(KEEP_ROWS)
+          .prepare('DELETE FROM scores WHERE board = ? AND id NOT IN (SELECT id FROM scores WHERE board = ? ORDER BY score DESC, id ASC LIMIT ?)')
+          .bind(board, board, KEEP_ROWS)
           .run();
 
-        return json({ ok: true, scores: await topScores(env.DB) });
+        // 1-based rank among this board's scores, same ordering as
+        // topScores (higher score first, earlier submission breaks ties)
+        let rank = null;
+        if (newId != null) {
+          const row = await env.DB
+            .prepare('SELECT COUNT(*) AS n FROM scores WHERE board = ? AND (score > ? OR (score = ? AND id < ?))')
+            .bind(board, score, score, newId)
+            .first();
+          if (row) rank = row.n + 1;
+        }
+
+        return json({ ok: true, scores: await topScores(env.DB, board), rank });
       }
 
       return json({ error: 'method not allowed' }, 405);

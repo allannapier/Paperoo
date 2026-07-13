@@ -31,6 +31,50 @@ const THROW_COOLDOWN = 0.35;    // seconds between throws, so mashing can't wast
 const START_PAPERS = 15;
 const MAX_PAPERS = 30;
 const START_LIVES = 3;
+const DAILY_LEVELS = 3;         // fixed length of a Daily Route run
+const SHARE_URL = 'https://allannapier.github.io/Paperoo/';
+
+/* ---------- seeded rng ----------
+ * Route generation — everything spawnAhead rolls (action points, sides,
+ * variants, obstacle types, lateral positions, gap jitter, scenery spacing)
+ * — draws from game.rng instead of Math.random, so a Daily Route seed
+ * produces the identical street for every player. Cosmetic randomness
+ * (paper spin, confetti, screen shake, dog/ped animation timers) stays on
+ * Math.random since it never affects what the player has to react to.
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// mixes two integers into one 32-bit seed so each level gets its own stream —
+// a level's route must depend only on (daySeed, level), never on how many
+// rng calls the previous level happened to consume (paper throws etc.),
+// otherwise the sequence would desync between two runs of the same seed
+function hashSeed(a, b) {
+  let h = (a ^ 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ b, 0x85ebca6b) >>> 0;
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35) >>> 0;
+  h ^= h >>> 16;
+  return h >>> 0;
+}
+
+/* ---------- daily route ---------- */
+const DAILY_EPOCH_MS = Date.UTC(2026, 0, 1); // day #0 = 2026-01-01 UTC
+function dailyNumberFor(date = new Date()) {
+  const dayMs = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  return Math.floor((dayMs - DAILY_EPOCH_MS) / 86400000);
+}
+function dailyDateStr(n) {
+  const d = new Date(DAILY_EPOCH_MS + n * 86400000);
+  const pad = v => String(v).padStart(2, '0');
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
+}
 
 /* ---------- playable characters ---------- */
 const CHARACTERS = [
@@ -63,6 +107,10 @@ const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlayTitle');
 const overlayText = document.getElementById('overlayText');
 const overlayPrompt = document.getElementById('overlayPrompt');
+const titleButtons = document.getElementById('titleButtons');
+const endlessBtn = document.getElementById('endlessBtn');
+const dailyBtn = document.getElementById('dailyBtn');
+const dailyNumSpan = document.getElementById('dailyNumSpan');
 const logoImg = document.getElementById('logoImg');
 const charSelect = document.getElementById('charSelect');
 const btnThrowL = document.getElementById('btnThrowL');
@@ -173,6 +221,13 @@ const game = {
   lives: START_LIVES,
   score: 0,
   streak: 0,
+  bestStreak: 0,          // best streak reached this run, for share text
+  rng: Math.random,       // route-generation stream; reseeded per level (see startLevel)
+  dailyMode: false,
+  dailyNumber: dailyNumberFor(),
+  daySeedBase: 0,         // seeded from the date (daily) or Math.random (endless) at startGame
+  runDelivered: 0,        // deliveries made across the whole run, for share text
+  runQuota: 0,            // sum of subsTotal across levels played, for share text
   invuln: 0,
   shake: 0,
   time: 0,
@@ -212,8 +267,13 @@ function levelParams(L, speedMult) {
 
 function startLevel(L) {
   game.level = L;
+  // seeded once per level, keyed on (daySeed, level) — never depends on how
+  // many rng calls the previous level consumed, so the same daily seed
+  // always produces the identical street regardless of play style
+  game.rng = mulberry32(hashSeed(game.daySeedBase, L));
   game.lp = levelParams(L, game.character.speedMult);
   game.target = Math.ceil(game.lp.subsTotal * 0.6);
+  game.runQuota += game.lp.subsTotal;
   game.delivered = 0;
   game.subsScheduled = 0;
   game.finishD = null;
@@ -239,6 +299,7 @@ function startLevel(L) {
   game.mode = 'playing';
   game.paused = false;
   overlay.classList.add('hidden');
+  titleButtons.classList.add('hidden');
   charSelect.classList.add('hidden');
   LeaderboardUI.hide();
   Music.start('game');
@@ -264,7 +325,7 @@ function spawnAhead() {
   // the level's demand sequence ends at the finish line
   while (game.finishD === null && game.nextActionD < horizonD) {
     const d = game.nextActionD;
-    const r = Math.random();
+    const r = game.rng();
     const deliveryP = game.subsScheduled < lp.subsTotal ? 0.46 : 0;
     // paper drought protection: running low with nothing to pick up ahead
     // means the next action point MUST be a bundle, whatever the dice said —
@@ -272,14 +333,14 @@ function spawnAhead() {
     const bundleAhead = game.entities.some(e => e.kind === 'bundle' && !e.taken && e.d > game.dist);
     const forceBundle = game.papers <= 3 && !bundleAhead;
     if (forceBundle) {
-      game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
+      game.entities.push({ kind: 'bundle', d, x: (game.rng() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
     } else if (r < deliveryP) {
       // delivery: house placed so its throw moment lands exactly at d
-      const side = Math.random() < 0.7 ? -game.lastDeliverySide : game.lastDeliverySide;
+      const side = game.rng() < 0.7 ? -game.lastDeliverySide : game.lastDeliverySide;
       game.lastDeliverySide = side;
       const hd = d + THROW_LEAD;
       game.entities.push({
-        kind: 'house', side, variant: 1 + Math.floor(Math.random() * 3),
+        kind: 'house', side, variant: 1 + Math.floor(game.rng() * 3),
         sub: true, delivered: false, missed: false, d: hd, x: side * HOUSE_X, wW: 7.4, wH: 6.6,
       });
       game.entities.push({ kind: 'mailbox', side, d: hd - 1.2, x: side * MAILBOX_X, wW: 1.1, wH: 1.55, hit: false });
@@ -289,27 +350,29 @@ function spawnAhead() {
         game.entities.push({ kind: 'finish', d: game.finishD });
       }
     } else if (r < deliveryP + lp.obstacleShare + diff * 0.06) {
-      const t = Math.random();
+      const t = game.rng();
       if (t < 0.3) {
-        game.entities.push({ kind: 'car', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
+        game.entities.push({ kind: 'car', d, x: (game.rng() < 0.5 ? -1 : 1) * (ROAD_HALF - 1.3), wW: 2.4, wH: 1.8 });
       } else if (t < 0.55) {
-        game.entities.push({ kind: 'dog', d, x: (Math.random() * 2 - 1) * 3, wW: 1.55, wH: 1.0, t: Math.random() * 10 });
+        // x (route) comes off the seeded stream; t (animation phase) is
+        // cosmetic and stays on Math.random — it never changes what's on the road
+        game.entities.push({ kind: 'dog', d, x: (game.rng() * 2 - 1) * 3, wW: 1.55, wH: 1.0, t: Math.random() * 10 });
       } else if (t < 0.8) {
-        game.entities.push({ kind: 'bin', d, x: (Math.random() < 0.5 ? -1 : 1) * (ROAD_HALF - 0.7), wW: 0.9, wH: 1.25 });
+        game.entities.push({ kind: 'bin', d, x: (game.rng() < 0.5 ? -1 : 1) * (ROAD_HALF - 0.7), wW: 0.9, wH: 1.25 });
       } else {
-        game.entities.push({ kind: 'drain', d, x: (Math.random() * 2 - 1) * 3, wW: 1.7, wH: 0.5 });
+        game.entities.push({ kind: 'drain', d, x: (game.rng() * 2 - 1) * 3, wW: 1.7, wH: 0.5 });
       }
     } else if (r < deliveryP + lp.obstacleShare + diff * 0.06 + 0.12) {
-      game.entities.push({ kind: 'bundle', d, x: (Math.random() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
+      game.entities.push({ kind: 'bundle', d, x: (game.rng() * 2 - 1) * 2.5, wW: 1.0, wH: 0.7 });
     } else if (r < deliveryP + lp.obstacleShare + diff * 0.06 + 0.22) {
       // a man out for a stroll on the sidewalk — bonus points for a bullseye
-      const side = Math.random() < 0.5 ? -1 : 1;
+      const side = game.rng() < 0.5 ? -1 : 1;
       game.entities.push({ kind: 'ped', side, d: d + THROW_LEAD, x: side * (ROAD_HALF + 0.9), wW: 0.95, wH: 2.0, t: Math.random() * 10, hit: false });
     } // else: a breather — nothing to do for a beat
 
     // demands tighten within the level as speed ramps
     const gapT = lp.gapT - 0.45 * diff;
-    game.nextActionD = d + Math.max(8, game.speed * gapT * (0.85 + Math.random() * 0.3));
+    game.nextActionD = d + Math.max(8, game.speed * gapT * (0.85 + game.rng() * 0.3));
   }
 
   // scenery: dark non-subscriber houses (smashable) fill the gaps, never
@@ -321,14 +384,14 @@ function spawnAhead() {
       const d = game.sceneryD[i];
       const clash = game.entities.find(e => e.kind === 'house' && e.side === sign && Math.abs(e.d - d) < 9);
       if (clash) {
-        game.sceneryD[i] = clash.d + 9 + Math.random() * 4;
+        game.sceneryD[i] = clash.d + 9 + game.rng() * 4;
         continue;
       }
       game.entities.push({
-        kind: 'house', side: sign, variant: 1 + Math.floor(Math.random() * 3),
+        kind: 'house', side: sign, variant: 1 + Math.floor(game.rng() * 3),
         sub: false, delivered: false, missed: false, d, x: sign * HOUSE_X, wW: 7.4, wH: 6.6,
       });
-      game.sceneryD[i] = d + 11 + Math.random() * 6;
+      game.sceneryD[i] = d + 11 + game.rng() * 6;
     }
   }
 }
@@ -402,6 +465,47 @@ function crash() {
   if (game.lives <= 0) endGame();
 }
 
+// board id the current run's score belongs to — endless always goes to the
+// shared global board, a Daily Route goes to that calendar day's own board
+function currentBoardId() {
+  return game.dailyMode ? `daily-${dailyDateStr(game.dailyNumber)}` : 'global';
+}
+
+/* ---------- share ---------- */
+function buildShareText() {
+  const score = game.score.toLocaleString('en-US');
+  if (game.dailyMode) {
+    return `PAPEROO DAILY #${game.dailyNumber}\n🗞️ SCORE ${score} · 📬 ${game.runDelivered}/${game.runQuota} · 🔥x${game.bestStreak}\n${SHARE_URL}`;
+  }
+  return `PAPEROO\n🗞️ SCORE ${score} · LEVEL ${game.level} · 🔥x${game.bestStreak}\n${SHARE_URL}`;
+}
+
+async function shareScore() {
+  const btn = document.getElementById('shareBtn');
+  const text = buildShareText();
+  try {
+    if (navigator.share) {
+      await navigator.share({ text });
+      return;
+    }
+  } catch (e) { return; } // share sheet dismissed/cancelled — no-op
+  try {
+    await navigator.clipboard.writeText(text);
+    const original = btn.textContent;
+    btn.textContent = 'COPIED!';
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  } catch (e) { /* clipboard unavailable — nothing more we can do */ }
+}
+
+// per-day best, kept locally so the title/share flow can show "beat today's
+// best" without a network round trip
+function updateDailyBest() {
+  const key = `paperoo_daily_${game.dailyNumber}_best`;
+  const prevBest = Number(localStorage.getItem(key) || 0);
+  if (game.score > prevBest) localStorage.setItem(key, String(game.score));
+  return Math.max(game.score, prevBest);
+}
+
 function endGame(reason) {
   game.mode = 'gameover';
   game.paused = false;
@@ -410,6 +514,7 @@ function endGame(reason) {
     game.best = game.score;
     localStorage.setItem('paperperson_best', String(game.best));
   }
+  if (game.dailyMode) updateDailyBest();
   overlayTitle.style.display = '';
   overlayTitle.textContent = 'GAME OVER';
   logoImg.style.display = 'none';
@@ -417,16 +522,42 @@ function endGame(reason) {
   overlayText.textContent = `${lines}SCORE ${game.score}\nBEST ${game.best}`;
   overlayPrompt.textContent = '';
   overlay.classList.remove('hidden');
-  LeaderboardUI.show(game.score, game.level);
+  LeaderboardUI.show(game.score, game.level, currentBoardId());
+}
+
+// reached the end of a Daily Route's fixed 3rd street — a distinct
+// game-over-style screen, same shareable/submittable panel underneath
+function finishDailyRoute() {
+  game.mode = 'gameover';
+  game.paused = false;
+  Music.start('title');
+  if (game.score > game.best) {
+    game.best = game.score;
+    localStorage.setItem('paperperson_best', String(game.best));
+  }
+  const dailyBest = updateDailyBest();
+  overlayTitle.style.display = '';
+  overlayTitle.textContent = 'ROUTE COMPLETE!';
+  logoImg.style.display = 'none';
+  overlayText.textContent = `SCORE ${game.score}\nBEST TODAY ${dailyBest}`;
+  overlayPrompt.textContent = '';
+  overlay.classList.remove('hidden');
+  LeaderboardUI.show(game.score, game.level, currentBoardId());
 }
 
 function startGame() {
   game.score = 0;
   game.lives = START_LIVES;
   game.streak = 0;
+  game.bestStreak = 0;
   game.comboMult = 1;
   game.maxComboFlashed = false;
   game.papers = START_PAPERS;
+  game.runDelivered = 0;
+  game.runQuota = 0;
+  // endless reseeds fresh every run; daily locks to the calendar date so
+  // every player's route is identical
+  game.daySeedBase = game.dailyMode ? game.dailyNumber : ((Math.random() * 4294967296) >>> 0);
   startLevel(1);
 }
 
@@ -435,6 +566,16 @@ function showCharSelect() {
   overlay.classList.add('hidden');
   charSelect.classList.remove('hidden');
   LeaderboardUI.hide();
+}
+
+function startEndlessFlow() {
+  game.dailyMode = false;
+  showCharSelect();
+}
+
+function startDailyFlow() {
+  game.dailyMode = true;
+  showCharSelect();
 }
 
 function pickCharacter(id) {
@@ -450,16 +591,24 @@ function pickCharacter(id) {
 // card, and game over
 function overlayAction() {
   if (game.mode === 'levelup' || game.mode === 'roundfail') startLevel(game.level + 1);
-  else if (game.mode === 'title') showCharSelect();
+  else if (game.mode === 'title') startEndlessFlow(); // keyboard Space/Enter defaults to endless
 }
 
 function endLevel() {
+  // a Daily Route is a fixed 3 streets — crossing the finish line on the
+  // last one always ends the run, met quota or not (there's no street 4 to
+  // fall back to the way endless's roundfail does)
+  const isDailyFinal = game.dailyMode && game.level >= DAILY_LEVELS;
   if (game.delivered >= game.target) {
     const bonus = game.papers * 20;
     game.score += bonus;
     if (game.score > game.best) {
       game.best = game.score;
       localStorage.setItem('paperperson_best', String(game.best));
+    }
+    if (isDailyFinal) {
+      finishDailyRoute();
+      return;
     }
     game.mode = 'levelup';
     overlayTitle.style.display = '';
@@ -469,7 +618,7 @@ function endLevel() {
     overlayPrompt.textContent = `TAP FOR LEVEL ${game.level + 1}`;
     overlay.classList.remove('hidden');
     AudioFX.deliverSfx();
-  } else if (game.lives > 1) {
+  } else if (game.lives > 1 && !isDailyFinal) {
     // missing quota costs a heart, not the whole run — the player rides on
     // to the next street instead of the game ending with lives still banked
     game.lives--;
@@ -524,6 +673,8 @@ function paperLands(p) {
         if (nearBox) mb.hit = true;
         game.streak++;
         game.delivered++;
+        game.runDelivered++;
+        game.bestStreak = Math.max(game.bestStreak, game.streak);
         const nowMult = mult();
         const pts = (nearBox ? 250 : 100) * nowMult;
         game.score += pts;
@@ -1093,6 +1244,9 @@ window.addEventListener('keydown', e => {
     case 'Space': case 'Enter':
       overlayAction();
       break;
+    case 'KeyY':
+      if (game.mode === 'title') startDailyFlow();
+      break;
   }
 });
 window.addEventListener('keyup', e => {
@@ -1103,13 +1257,29 @@ window.addEventListener('keyup', e => {
 });
 
 overlay.addEventListener('pointerdown', e => {
-  // let the leaderboard panel's input and buttons work normally
-  if (e.target.closest && e.target.closest('#lbPanel')) return;
+  // let the leaderboard panel's input/buttons and the title screen's two
+  // mode buttons work normally — this handler only drives the tap-anywhere
+  // level-transition cards now
+  if (e.target.closest && (e.target.closest('#lbPanel') || e.target.closest('#titleButtons'))) return;
   e.preventDefault();
   AudioFX.init();
   Music.init();
-  // on game over, restarting is the RIDE AGAIN button's job
-  if (game.mode !== 'playing' && game.mode !== 'gameover') overlayAction();
+  if (game.mode === 'levelup' || game.mode === 'roundfail') overlayAction();
+});
+
+endlessBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  AudioFX.init();
+  Music.init();
+  startEndlessFlow();
+});
+dailyBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  e.stopPropagation();
+  AudioFX.init();
+  Music.init();
+  startDailyFlow();
 });
 
 document.getElementById('playAgainBtn').addEventListener('click', () => {
@@ -1122,6 +1292,7 @@ document.getElementById('changeRiderBtn').addEventListener('click', () => {
   Music.init();
   showCharSelect();
 });
+document.getElementById('shareBtn').addEventListener('click', () => shareScore());
 LeaderboardUI.init();
 
 /* ---------- mute + pause buttons ---------- */
@@ -1217,6 +1388,7 @@ sprites = loadSprites((key) => {
 });
 sampleSkyTopColor();
 setLogoImg();
+dailyNumSpan.textContent = String(game.dailyNumber);
 resize();
 Music.start('title'); // safe pre-gesture: just records intent until Music.init() resumes the context
 requestAnimationFrame(frame);

@@ -37,6 +37,17 @@
   @keyframes blink { 50% { opacity:0.15; } }
   .hidden { display:none !important; }
 
+  /* ---- title screen: endless vs. daily route ---- */
+  #titleButtons { display:flex; gap:10px; width:min(88%, 340px); }
+  #endlessBtn, #dailyBtn {
+    border:0; border-radius:8px; padding:12px 10px; font-family:inherit; font-weight:bold;
+    font-size:14px; letter-spacing:1px; color:#fff; cursor:pointer;
+    box-shadow:0 3px 0 rgba(0,0,0,.45); flex:1;
+  }
+  #endlessBtn { background:#d1495b; }
+  #dailyBtn { background:#2c7a45; }
+  #endlessBtn:active, #dailyBtn:active { transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.45); }
+
   /* ---- character select screen ---- */
   #charSelect {
     position:absolute; inset:0; display:flex; flex-direction:column;
@@ -81,17 +92,20 @@
     font-size:16px; letter-spacing:1px; text-transform:uppercase;
   }
   #nameInput:focus { outline:none; border-color:#7bd6ff; }
-  #submitScoreBtn, #playAgainBtn, #changeRiderBtn {
+  #submitScoreBtn, #playAgainBtn, #changeRiderBtn, #shareBtn {
     border:0; border-radius:8px; padding:9px 14px; font-family:inherit; font-weight:bold;
     font-size:14px; letter-spacing:1px; color:#fff; cursor:pointer;
     box-shadow:0 3px 0 rgba(0,0,0,.45);
   }
   #submitScoreBtn { background:#1fb57a; }
   #submitScoreBtn:disabled { background:#3a5c4c; cursor:default; }
-  #postGameRow { display:flex; gap:8px; }
-  #playAgainBtn { background:#d1495b; font-size:16px; padding:12px; flex:1.4; }
+  #lbRank { font-size:12px; letter-spacing:2px; color:#ffd700; text-align:center; }
+  #lbRank.hidden { display:none; }
+  #postGameRow, #postGameRow2 { display:flex; gap:8px; }
+  #playAgainBtn { background:#d1495b; font-size:16px; padding:12px; flex:1; }
+  #shareBtn { background:#2c6e8a; font-size:13px; padding:12px 8px; flex:1; }
   #changeRiderBtn { background:#2c3a6b; font-size:13px; padding:12px 8px; flex:1; }
-  #submitScoreBtn:active, #playAgainBtn:active, #changeRiderBtn:active {
+  #submitScoreBtn:active, #playAgainBtn:active, #changeRiderBtn:active, #shareBtn:active {
     transform:translateY(2px); box-shadow:0 1px 0 rgba(0,0,0,.45);
   }
   #lbList {
@@ -194,16 +208,24 @@
       <div id="overlayText">Glowing house? That's a customer.
 Throw when the ring turns green.
 Mind the dogs. &#128054;</div>
-      <div id="overlayPrompt">TAP TO CHOOSE YOUR RIDER</div>
+      <div id="overlayPrompt"></div>
+      <div id="titleButtons">
+        <button id="endlessBtn">ENDLESS RIDE</button>
+        <button id="dailyBtn">DAILY ROUTE #<span id="dailyNumSpan">1</span></button>
+      </div>
       <div id="lbPanel" class="hidden">
         <div id="lbHeading">TOP SCORES</div>
         <div id="nameRow">
           <input id="nameInput" maxlength="12" placeholder="YOUR NAME" autocomplete="off" spellcheck="false">
           <button id="submitScoreBtn">SUBMIT</button>
         </div>
+        <div id="lbRank" class="hidden"></div>
         <ol id="lbList"></ol>
         <div id="postGameRow">
           <button id="playAgainBtn">RIDE AGAIN</button>
+        </div>
+        <div id="postGameRow2">
+          <button id="shareBtn">SHARE</button>
           <button id="changeRiderBtn">CHANGE RIDER</button>
         </div>
       </div>
