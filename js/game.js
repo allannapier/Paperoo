@@ -388,7 +388,6 @@ function pickCharacter(id) {
 
 // the overlay is the title screen, the level-complete card, and game over
 function overlayAction() {
-  if (!sprites) return;
   if (game.mode === 'levelup') startLevel(game.level + 1);
   else if (game.mode === 'title') showCharSelect();
 }
@@ -914,7 +913,7 @@ function populateCharSelect() {
     const card = document.createElement('button');
     card.className = 'charCard';
     card.innerHTML = `
-      <img class="charThumb" src="assets/${c.prefix}_straight.png" alt="${c.name}" draggable="false">
+      <img class="charThumb" src="assets/${c.prefix}_straight.webp" alt="${c.name}" draggable="false">
       <div class="charName">${c.name}</div>
       <div class="charTag">${c.tagline}</div>
       <div class="charDesc">${c.desc}</div>
@@ -947,17 +946,30 @@ function frame(t) {
 // seamlessly whatever the strip's top color is
 let skyTopColor = '#1c2e5e';
 
-loadSprites(loaded => {
-  sprites = loaded;
+function sampleSkyTopColor() {
   const sample = document.createElement('canvas');
   sample.width = sample.height = 4;
   const sctx = sample.getContext('2d');
   sctx.drawImage(sprites.skyline, 0, 0);
   const d = sctx.getImageData(1, 1, 1, 1).data;
   skyTopColor = `rgb(${d[0]},${d[1]},${d[2]})`;
-  // title logo: real image if provided, otherwise the placeholder canvas
+}
+
+function setLogoImg() {
+  // real image if it has loaded, otherwise the placeholder canvas
   logoImg.src = sprites.logo instanceof HTMLImageElement ? sprites.logo.src : sprites.logo.toDataURL();
-  resize();
-  requestAnimationFrame(frame);
+}
+
+// sprites start out as placeholder canvases (drawn instantly) and get
+// swapped for real art as each file finishes downloading, so the title
+// screen and game are usable on the very first frame instead of waiting
+// on every asset in the game to load.
+sprites = loadSprites((key) => {
+  if (key === 'skyline') sampleSkyTopColor();
+  if (key === 'logo') setLogoImg();
 });
+sampleSkyTopColor();
+setLogoImg();
+resize();
+requestAnimationFrame(frame);
 resize();

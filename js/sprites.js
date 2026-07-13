@@ -9,62 +9,65 @@
 
 const SPRITES = {
   // rider (rear view) — three lean poses, one set per playable character
-  player_straight: { file: 'player_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
-  player_left:     { file: 'player_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
-  player_right:    { file: 'player_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
-  player2_straight: { file: 'player2_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
-  player2_left:     { file: 'player2_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
-  player2_right:    { file: 'player2_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
-  player3_straight: { file: 'player3_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
-  player3_left:     { file: 'player3_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
-  player3_right:    { file: 'player3_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
-  player4_straight: { file: 'player4_straight.png', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
-  player4_left:     { file: 'player4_left.png',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
-  player4_right:    { file: 'player4_right.png',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player_straight: { file: 'player_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player_left:     { file: 'player_left.webp',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player_right:    { file: 'player_right.webp',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player2_straight: { file: 'player2_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player2_left:     { file: 'player2_left.webp',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player2_right:    { file: 'player2_right.webp',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player3_straight: { file: 'player3_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player3_left:     { file: 'player3_left.webp',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player3_right:    { file: 'player3_right.webp',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
+  player4_straight: { file: 'player4_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
+  player4_left:     { file: 'player4_left.webp',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
+  player4_right:    { file: 'player4_right.webp',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
 
   // houses (front view) — sub = subscriber (lit), nosub = non-subscriber (dark)
-  house1_sub:   { file: 'house1_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, true) },
-  house1_nosub: { file: 'house1_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, false) },
-  house2_sub:   { file: 'house2_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, true) },
-  house2_nosub: { file: 'house2_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, false) },
-  house3_sub:   { file: 'house3_sub.png',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, true) },
-  house3_nosub: { file: 'house3_nosub.png', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, false) },
+  house1_sub:   { file: 'house1_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, true) },
+  house1_nosub: { file: 'house1_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, false) },
+  house2_sub:   { file: 'house2_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, true) },
+  house2_nosub: { file: 'house2_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, false) },
+  house3_sub:   { file: 'house3_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, true) },
+  house3_nosub: { file: 'house3_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, false) },
 
-  mailbox:     { file: 'mailbox.png',     w: 70,  h: 130, draw: drawMailbox },
-  mailbox_hit: { file: 'mailbox_hit.png', w: 70,  h: 130, draw: (c, w, h) => drawMailbox(c, w, h, true) },
+  mailbox:     { file: 'mailbox.webp',     w: 70,  h: 130, draw: drawMailbox },
+  mailbox_hit: { file: 'mailbox_hit.webp', w: 70,  h: 130, draw: (c, w, h) => drawMailbox(c, w, h, true) },
 
-  paper:  { file: 'paper.png',  w: 40,  h: 40,  draw: drawPaper },
-  bundle: { file: 'bundle.png', w: 90,  h: 60,  draw: drawBundle },
+  paper:  { file: 'paper.webp',  w: 40,  h: 40,  draw: drawPaper },
+  bundle: { file: 'bundle.webp', w: 90,  h: 60,  draw: drawBundle },
 
   // obstacles
-  car:   { file: 'car.png',   w: 200, h: 150, draw: drawCar },
-  dog1:  { file: 'dog1.png',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 0) },
-  dog2:  { file: 'dog2.png',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 1) },
-  bin:   { file: 'bin.png',   w: 80,  h: 110, draw: drawBin },
-  drain: { file: 'drain.png', w: 140, h: 45,  draw: drawDrain },
+  car:   { file: 'car.webp',   w: 200, h: 150, draw: drawCar },
+  dog1:  { file: 'dog1.webp',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 0) },
+  dog2:  { file: 'dog2.webp',  w: 120, h: 90,  draw: (c, w, h) => drawDog(c, w, h, 1) },
+  bin:   { file: 'bin.webp',   w: 80,  h: 110, draw: drawBin },
+  drain: { file: 'drain.webp', w: 140, h: 45,  draw: drawDrain },
 
   // pedestrian on the sidewalk — bonus points for a direct hit
-  ped1:    { file: 'ped1.png',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 0) },
-  ped2:    { file: 'ped2.png',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 1) },
-  ped_hit: { file: 'ped_hit.png', w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 2) },
+  ped1:    { file: 'ped1.webp',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 0) },
+  ped2:    { file: 'ped2.webp',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 1) },
+  ped_hit: { file: 'ped_hit.webp', w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 2) },
 
   // scenery / ui
-  skyline: { file: 'skyline.png', w: 1024, h: 256, draw: drawSkyline },
-  logo:    { file: 'logo.png',    w: 640,  h: 300, draw: drawLogo },
+  skyline: { file: 'skyline.webp', w: 1024, h: 256, draw: drawSkyline },
+  logo:    { file: 'logo.webp',    w: 640,  h: 300, draw: drawLogo },
 };
 
-function loadSprites(onDone) {
+// Fills `out` with placeholder canvases synchronously so the game is
+// playable on the first frame, then swaps each entry for the real image
+// as it finishes downloading (calling onEach right away, per sprite,
+// instead of making everything wait on the slowest asset).
+function loadSprites(onEach) {
   const out = {};
-  let pending = Object.keys(SPRITES).length;
-  const finish = () => { if (--pending === 0) onDone(out); };
   // INLINE_ASSETS lets a single-file build embed sprites as data: URIs
   const inline = (typeof window !== 'undefined' && window.INLINE_ASSETS) || {};
   for (const [key, spec] of Object.entries(SPRITES)) {
+    out[key] = makePlaceholder(spec);
     const img = new Image();
-    img.onload = () => { out[key] = img; finish(); };
-    img.onerror = () => { out[key] = makePlaceholder(spec); finish(); };
+    img.onload = () => { out[key] = img; if (onEach) onEach(key, img); };
     img.src = inline[key] || ('assets/' + spec.file);
   }
+  return out;
 }
 
 function makePlaceholder(spec) {

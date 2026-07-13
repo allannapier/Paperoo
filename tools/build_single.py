@@ -1,6 +1,6 @@
 """Bundle the game into one self-contained HTML file.
 
-Inlines js/sprites.js and js/game.js into index.html and embeds every PNG
+Inlines js/sprites.js and js/game.js into index.html and embeds every WebP
 present in assets/ as a data: URI via window.INLINE_ASSETS, so the result
 runs with no network access at all (e.g. as a Claude Artifact preview).
 
@@ -17,9 +17,9 @@ def build(out_path):
     html = (ROOT / 'index.html').read_text()
 
     assets = {}
-    for png in sorted((ROOT / 'assets').glob('*.png')):
-        b64 = base64.b64encode(png.read_bytes()).decode()
-        assets[png.stem] = f'data:image/png;base64,{b64}'
+    for webp in sorted((ROOT / 'assets').glob('*.webp')):
+        b64 = base64.b64encode(webp.read_bytes()).decode()
+        assets[webp.stem] = f'data:image/webp;base64,{b64}'
     inline = 'window.INLINE_ASSETS = {\n' + ',\n'.join(
         f'  {k!r}: {v!r}' for k, v in assets.items()) + '\n};'
 
