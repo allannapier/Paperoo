@@ -31,6 +31,30 @@ const START_PAPERS = 15;
 const MAX_PAPERS = 30;
 const START_LIVES = 3;
 
+/* ---------- playable characters ---------- */
+const CHARACTERS = [
+  {
+    id: 'zoe', prefix: 'player', name: 'Zoe', tagline: 'E-Scooter',
+    desc: '“Rain or shine, papers fly on time.”',
+    speedMult: 1.0, steerMult: 1.0, speedPips: 3, handlingPips: 4,
+  },
+  {
+    id: 'milo', prefix: 'player2', name: 'Milo', tagline: 'Hoverboard',
+    desc: '“No wheels, no rules. Just vibes and velocity.”',
+    speedMult: 1.0, steerMult: 1.0, speedPips: 3, handlingPips: 4,
+  },
+  {
+    id: 'skye', prefix: 'player3', name: 'Skye', tagline: 'Rollerblades',
+    desc: '“Silent, smooth, and impossible to knock off her feet.”',
+    speedMult: 0.85, steerMult: 1.25, speedPips: 2, handlingPips: 5,
+  },
+  {
+    id: 'stan', prefix: 'player4', name: 'Grandpa Stan', tagline: 'Moped',
+    desc: "Can't be bothered getting out of bed? Send Grandpa instead.",
+    speedMult: 1.18, steerMult: 0.72, speedPips: 5, handlingPips: 2,
+  },
+];
+
 /* ---------- canvas / layout ---------- */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -39,6 +63,7 @@ const overlayTitle = document.getElementById('overlayTitle');
 const overlayText = document.getElementById('overlayText');
 const overlayPrompt = document.getElementById('overlayPrompt');
 const logoImg = document.getElementById('logoImg');
+const charSelect = document.getElementById('charSelect');
 const btnThrowL = document.getElementById('btnThrowL');
 const btnThrowR = document.getElementById('btnThrowR');
 
@@ -152,13 +177,15 @@ const game = {
   subsScheduled: 0,
   finishD: null,          // where this level's finish line sits
   best: Number(localStorage.getItem('paperperson_best') || 0),
+  character: CHARACTERS.find(c => c.id === localStorage.getItem('paperperson_character')) || CHARACTERS[0],
 };
 
-// each level runs the director a little hotter
-function levelParams(L) {
+// each level runs the director a little hotter, scaled by the rider's own
+// top speed (a faster character reaches a higher ceiling at every level)
+function levelParams(L, speedMult) {
   return {
-    baseSpeed: Math.min(16, 9.5 + L * 1.2),
-    maxSpeed: Math.min(20, 13 + L * 1.2),
+    baseSpeed: Math.min(16, 9.5 + L * 1.2) * speedMult,
+    maxSpeed: Math.min(20, 13 + L * 1.2) * speedMult,
     subsTotal: Math.min(24, 10 + L * 2),          // subscriber houses this level
     obstacleShare: Math.min(0.44, 0.30 + 0.02 * L),
     gapT: Math.max(1.0, 1.6 - 0.06 * L),          // seconds between demands
@@ -167,7 +194,7 @@ function levelParams(L) {
 
 function startLevel(L) {
   game.level = L;
-  game.lp = levelParams(L);
+  game.lp = levelParams(L, game.character.speedMult);
   game.target = Math.ceil(game.lp.subsTotal * 0.6);
   game.delivered = 0;
   game.subsScheduled = 0;
@@ -189,6 +216,7 @@ function startLevel(L) {
   game.ready = { '-1': false, '1': false };
   game.mode = 'playing';
   overlay.classList.add('hidden');
+  charSelect.classList.add('hidden');
   LeaderboardUI.hide();
 }
 
@@ -312,7 +340,7 @@ function crash() {
   game.streak = 0;
   game.invuln = 2.2;
   game.shake = 0.5;
-  game.speed = BASE_SPEED;
+  game.speed = game.lp.baseSpeed;
   AudioFX.crashSfx();
   announce('CRASH!', '#ff5555');
   if (game.lives <= 0) endGame();
@@ -342,11 +370,26 @@ function startGame() {
   startLevel(1);
 }
 
+function showCharSelect() {
+  game.mode = 'select';
+  overlay.classList.add('hidden');
+  charSelect.classList.remove('hidden');
+}
+
+function pickCharacter(id) {
+  const c = CHARACTERS.find(ch => ch.id === id);
+  if (!c) return;
+  game.character = c;
+  localStorage.setItem('paperperson_character', id);
+  charSelect.classList.add('hidden');
+  startGame();
+}
+
 // the overlay is the title screen, the level-complete card, and game over
 function overlayAction() {
   if (!sprites) return;
   if (game.mode === 'levelup') startLevel(game.level + 1);
-  else if (game.mode !== 'playing') startGame();
+  else if (game.mode === 'title') showCharSelect();
 }
 
 function endLevel() {
@@ -439,7 +482,7 @@ function update(dt) {
   game.shake = Math.max(0, game.shake - dt);
 
   // steering
-  game.player.x += game.player.steer * STEER_RATE * dt;
+  game.player.x += game.player.steer * STEER_RATE * game.character.steerMult * dt;
   game.player.x = Math.max(-PLAYER_MAX_X, Math.min(PLAYER_MAX_X, game.player.x));
   camX = game.player.x * 0.85;
 
@@ -707,9 +750,9 @@ function render() {
   }
 
   // rider (blinks while invulnerable)
-  if (game.mode !== 'title' && (game.invuln <= 0 || Math.floor(game.time * 10) % 2 === 0)) {
-    const key = game.player.steer < 0 ? 'player_left' : game.player.steer > 0 ? 'player_right' : 'player_straight';
-    const img = sprites[key];
+  if (game.mode !== 'title' && game.mode !== 'select' && (game.invuln <= 0 || Math.floor(game.time * 10) % 2 === 0)) {
+    const lean = game.player.steer < 0 ? 'left' : game.player.steer > 0 ? 'right' : 'straight';
+    const img = sprites[`${game.character.prefix}_${lean}`];
     const p = project(game.player.x, 0, PLAYER_Z);
     // fixed world height; width follows the sprite's aspect ratio
     const dh = 2.2 * p.s;
@@ -856,6 +899,34 @@ document.getElementById('playAgainBtn').addEventListener('click', () => {
   startGame();
 });
 LeaderboardUI.init();
+
+/* ---------- character select screen ---------- */
+const pips = (n, max = 5) => '●'.repeat(n) + '○'.repeat(max - n);
+
+function populateCharSelect() {
+  const grid = document.getElementById('charSelectGrid');
+  for (const c of CHARACTERS) {
+    const card = document.createElement('button');
+    card.className = 'charCard';
+    card.innerHTML = `
+      <img class="charThumb" src="assets/${c.prefix}_straight.png" alt="${c.name}" draggable="false">
+      <div class="charName">${c.name}</div>
+      <div class="charTag">${c.tagline}</div>
+      <div class="charDesc">${c.desc}</div>
+      <div class="charStats">
+        <div class="charStatRow"><span>SPEED</span><span class="charPips">${pips(c.speedPips)}</span></div>
+        <div class="charStatRow"><span>HANDLING</span><span class="charPips">${pips(c.handlingPips)}</span></div>
+      </div>`;
+    card.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      AudioFX.init();
+      pickCharacter(c.id);
+    });
+    grid.appendChild(card);
+  }
+}
+populateCharSelect();
 
 /* ---------- main loop ---------- */
 let lastT = 0;
