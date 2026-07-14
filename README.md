@@ -2,10 +2,11 @@
 
 **Play it now: https://allannapier.github.io/Paperoo/**
 
-A web remake of the classic paper-delivery arcade game — you're a girl on an
-e-scooter riding down a suburban street at dusk, throwing newspapers at
-subscriber houses. Viewed from behind the rider, pseudo-3D sprite-scaling
-style. Plain HTML/CSS/JS, no build step, no dependencies. Global leaderboard
+A web remake of the classic paper-delivery arcade game — riders on scooters,
+hoverboards, rollerblades and mopeds cruising a suburban street, throwing
+newspapers at subscriber houses. Viewed from behind the rider, pseudo-3D
+sprite-scaling style, with a synthesized chiptune soundtrack. Plain
+HTML/CSS/JS, no build step, no dependencies. Global + daily leaderboards
 backed by a Cloudflare Worker.
 
 **Play:** open `index.html`, or serve the folder with any static server
@@ -13,17 +14,32 @@ backed by a Cloudflare Worker.
 
 ## How to play
 
+- Two modes from the title screen: **ENDLESS RIDE** (survive as many streets
+  as you can) and **DAILY ROUTE #N** (a fixed three-street run — same seeded
+  streets for every player worldwide that day, with its own leaderboard and a
+  shareable result).
 - The bottom quarter of the screen is the touch controller: **STEER** ◀ ▶ and
-  **THROW** left / right.
-- Keyboard also works: **←/→** (or A/D) steer, **Z** throws left, **X** throws
-  right, **Space/Enter** starts.
+  **THROW** left / right. On a keyboard the deck collapses to a hint bar:
+  **←/→** (or A/D) steer, **Z** throws left, **X** throws right,
+  **Space/Enter** starts, **P/Esc** pauses.
 - Deliver papers to the **glowing subscriber houses** — hitting the mailbox
-  scores 250, the yard 100, and consecutive deliveries build a multiplier.
-- **Smash the windows** of dark non-subscriber houses for 50.
+  scores 250, the yard 100, and consecutive deliveries build a multiplier
+  (watch the combo pips by the score).
+- **Smash the windows** of dark non-subscriber houses for 50, bonk a
+  strolling pedestrian for 200, and shave past obstacles for a +25 near-miss
+  bonus.
 - Missing a subscriber house resets your multiplier.
-- Dodge parked cars, dogs, trash cans and storm drains. Three crashes and the
-  round is over.
-- Ride over paper bundles on the road to restock (max 30 papers).
+- Dodge parked cars, dogs, trash cans and storm drains — a crash costs a
+  heart. Missing a street's delivery quota costs a heart too; lose all three
+  and the round is over.
+- Ride over paper bundles on the road to restock (max 30 papers). Run low and
+  the route guarantees a bundle ahead.
+- Streets cycle dusk → night → day as the levels climb.
+- **Unlockable riders:** Zoe and Milo are available from the start; deliver
+  25 lifetime papers to unlock Skye, reach level 5 to unlock Grandpa Stan.
+  Every rider has different speed/handling.
+- End-of-run card shows your stats (accuracy, best streak, bonks, smashed
+  windows) with a **SHARE** button that copies a Wordle-style result.
 
 ## GitHub Pages
 
@@ -53,8 +69,15 @@ All in the Cloudflare dashboard, no CLI:
 5. Put the worker URL (`https://<name>.<account>.workers.dev`) into
    `js/config.js` as `LEADERBOARD_URL`, commit, push.
 
-The table creates itself on first use; only the top 500 scores are kept.
-Delete rows in the D1 console to moderate.
+The table creates itself on first use; only the top 500 scores are kept
+per board. Delete rows in the D1 console to moderate.
+
+> **Already deployed?** The Daily Route mode added a `board` column and a
+> submitter-rank response to the worker. Re-paste the current
+> [`tools/leaderboard-worker.js`](tools/leaderboard-worker.js) over your
+> deployed worker and deploy — the D1 schema migrates itself on the next
+> request. Until then daily scores land on the global board and no rank is
+> shown (the client degrades gracefully).
 
 ### Option B: Google Sheets + Apps Script
 
@@ -72,7 +95,8 @@ friendly arcade board, not a tamper-proof one.
 
 ## Art pipeline
 
-All graphics are currently code-drawn placeholders. Real sprites go in
+Real art has landed for the core set; anything missing falls back to a
+code-drawn placeholder. Sprites go in
 `assets/` — the game tries to load each PNG by name and falls back to its
 placeholder if the file is missing, so art can land incrementally. File names,
 sizes and ready-to-use image-generation prompts are in
@@ -80,6 +104,10 @@ sizes and ready-to-use image-generation prompts are in
 
 ## Code layout
 
-- `index.html` — page layout, controller buttons, styles
+- `index.html` — page layout, controller buttons, overlays, styles
+- `js/config.js` — leaderboard endpoint configuration
 - `js/sprites.js` — sprite registry, asset loader, placeholder painters
-- `js/game.js` — game logic: projection, spawning, physics, input, rendering
+- `js/music.js` — synthesized chiptune soundtrack (lookahead WebAudio sequencer)
+- `js/leaderboard.js` — leaderboard client + game-over panel UI
+- `js/game.js` — game logic: projection, spawning, physics, input, rendering,
+  daily seeding, rider progression
