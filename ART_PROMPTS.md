@@ -39,19 +39,37 @@ visible either side of her body and one rear wheel below the deck.
 
 ## Houses (6 images — 3 designs × lit/unlit)
 
-All houses: **flat front elevation view, perfectly front-facing, no perspective,
-no vanishing point** (the game engine adds the perspective). Single-storey
-suburban house with a front door in the middle and one window either side.
-Roughly square image.
+The street now cycles **dusk → night → day**, so house sprites must NOT have
+a time of day baked in: ask for **soft neutral daylight-agnostic lighting**
+(replace the "warm evening dusk lighting" phrase of the shared style sentence
+with "soft neutral lighting" for these six images only). The lit/unlit story
+is carried entirely by the windows and porch light.
 
-| File | Prompt (after the style sentence) |
+All houses: **flat front elevation view, perfectly front-facing, no
+perspective, no vanishing point** (the game engine adds the perspective).
+**Wide landscape format, roughly 2:1** — the current in-game art is 800×417,
+so generate at that shape or larger and it will be scaled down. Single-storey,
+strong chunky silhouette, big readable windows (they must read when the house
+is 30 pixels wide on the horizon). The bottom edge is a flat foundation line —
+**no lawn, path, driveway, fence or mailbox** (the mailbox is its own sprite).
+
+Each design is a lit/unlit pair: generate both in the same chat and keep the
+building pixel-identical between them — only lights, window contents and mood
+change.
+
+| File | Prompt (after the adjusted style sentence) |
 |---|---|
-| `house1_sub.png` | Flat front elevation view of a cozy single-storey suburban house, perfectly front-facing with no perspective. Red-brick walls, brown gable roof, central front door, one window on each side of the door. **Windows glowing warm yellow, porch light on**, welcoming night-time feel. |
-| `house1_nosub.png` | Exactly the same red-brick house with brown gable roof, flat front elevation view, no perspective — but **all windows dark and unlit, porch light off**, gloomy and asleep. |
-| `house2_sub.png` | Flat front elevation view of a single-storey suburban house, perfectly front-facing with no perspective. Pale blue wooden siding, dark navy gable roof, white door frame, central front door, one window each side. **Windows glowing warm yellow, porch light on.** |
-| `house2_nosub.png` | Exactly the same pale blue wooden house with navy roof, flat front elevation view, no perspective — but **all windows dark and unlit, porch light off**, gloomy. |
-| `house3_sub.png` | Flat front elevation view of a single-storey suburban house, perfectly front-facing with no perspective. Beige stucco walls, grey tiled gable roof, dark wooden door, one window each side. **Windows glowing warm yellow, porch light on.** |
-| `house3_nosub.png` | Exactly the same beige stucco house with grey roof, flat front elevation view, no perspective — but **all windows dark and unlit, porch light off**, gloomy. |
+| `house1_sub.png` | Flat front elevation of a cozy single-storey red-brick craftsman bungalow, perfectly front-facing, no perspective. Chocolate-brown gable roof with a small brick chimney, covered front porch with two white posts, central wooden front door, one large white-framed window on each side of the porch. **Every window blazing warm amber-yellow with visible glow, cozy curtains open, porch lantern lit with a soft halo, welcoming doormat** — unmistakably "this house wants its newspaper". Wide landscape sprite, roughly 2:1. |
+| `house1_nosub.png` | The exact same red-brick craftsman bungalow — identical roof, chimney, porch, posts, door and window placement — but **asleep: every window dark cold blue-grey with a faint glassy sheen, curtains drawn, porch lantern off, brick slightly muted and cooler**, gloomy and unwelcoming. One extra-large prominent dark front window as the centrepiece. |
+| `house2_sub.png` | Flat front elevation of a single-storey pale-blue timber cottage, perfectly front-facing, no perspective. Powder-blue horizontal wood siding with crisp white trim, steep navy-blue gable roof, white front door with a small round window, a wide white-framed bay window on one side and a regular sash window on the other, low white porch railing. **All windows glowing warm amber with soft light spill, porch light on with a gentle halo, a warm string of light along the porch rail** — cheerful and inviting. Wide landscape sprite, roughly 2:1. |
+| `house2_nosub.png` | The exact same pale-blue timber cottage — identical siding, trim, navy roof, bay window, railing — but **dark and asleep: windows cold dark blue-grey with faint reflections, blinds half-drawn, porch light off, no string lights, paint slightly desaturated**, gloomy. The bay window large and prominent as a dark centrepiece. |
+| `house3_sub.png` | Flat front elevation of a low wide single-storey mid-century ranch house, perfectly front-facing, no perspective. Warm beige stucco walls, flat-ish shallow grey tiled roof with wide eaves, dark walnut front door, one huge floor-to-ceiling picture window on one side of the door and a smaller square window on the other, a slim modern wall sconce by the door. **Every window pouring out warm golden light, silhouettes of houseplants inside, sconce lit with a halo** — modern, warm, occupied. Wide landscape sprite, roughly 2:1. |
+| `house3_nosub.png` | The exact same beige mid-century ranch — identical roof, eaves, door and window layout — but **lifeless: the huge picture window and square window dark charcoal-blue with a faint glassy glint, sconce off, stucco slightly greyed**, asleep and gloomy. The giant dark picture window dominates. |
+
+After generating, hand the images over as PNGs (transparent or solid #00FF00
+background) — they get chroma-keyed, resized to 800×417 and converted to
+`.webp` before landing in `assets/` (the game loads `houseN_sub.webp` /
+`houseN_nosub.webp`).
 
 ## Props & obstacles
 
