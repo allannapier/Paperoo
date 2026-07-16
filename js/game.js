@@ -194,6 +194,18 @@ function currentPhaseIndex() {
   return (game.level - 1) % 3;
 }
 
+/* ---------- neighborhood districts ----------
+ * The street reskins (houses + skyline) every 3 levels, cycling through
+ * DISTRICTS (see sprites.js). Both this and the phase cycle above have
+ * period 3 and start together at level 1, so every district's three
+ * levels always run dusk -> night -> day in order; only the houses and
+ * skyline change between one district and the next.
+ */
+function currentDistrictIndex() {
+  if (game.dailyMode) return Math.floor(game.dailyNumber / 3) % DISTRICTS.length;
+  return Math.floor((game.level - 1) / 3) % DISTRICTS.length;
+}
+
 /* ---------- canvas / layout ---------- */
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
@@ -424,6 +436,13 @@ function startLevel(L) {
     const phaseName = PHASES[currentPhaseIndex()].name;
     if (phaseName === 'night') announce('NIGHT SHIFT', '#9fd6ff');
     else if (phaseName === 'day') announce('DAYBREAK', '#ffe066');
+  }
+  // a new neighborhood every 3 levels (or once at street 1 in daily mode,
+  // same reasoning as the phase announce above) — skip street 1 of a fresh
+  // endless run since the title/char-select flow already set the scene
+  const enteringDistrict = game.dailyMode ? L === 1 : (L - 1) % 3 === 0;
+  if (enteringDistrict && (L !== 1 || game.dailyMode)) {
+    announce(DISTRICTS[currentDistrictIndex()].name.toUpperCase(), '#ff9f5f');
   }
 }
 
@@ -1022,7 +1041,7 @@ function update(realDt) {
 /* ---------- render ---------- */
 function spriteFor(e) {
   switch (e.kind) {
-    case 'house': return sprites[`house${e.variant}_${e.sub ? 'sub' : 'nosub'}`];
+    case 'house': return sprites[`house${e.variant}_${e.sub ? 'sub' : 'nosub'}${DISTRICTS[currentDistrictIndex()].suffix}`];
     case 'mailbox': return e.hit ? sprites.mailbox_hit : sprites.mailbox;
     case 'car': return sprites.car;
     case 'dog': return Math.floor(e.t / 0.16) % 2 ? sprites.dog2 : sprites.dog1;
@@ -1044,12 +1063,13 @@ function render() {
   // day/night: which palette this level (or, in daily mode, this whole
   // route) is using — see PHASES for the per-phase colours
   const phase = PHASES[currentPhaseIndex()];
+  const skylineKey = phase.skylineKey + DISTRICTS[currentDistrictIndex()].suffix;
 
   // sky + skyline strip (slight parallax against steering)
-  const baseSky = skySamples[phase.skylineKey] || '#1c2e5e';
+  const baseSky = skySamples[skylineKey] || '#1c2e5e';
   ctx.fillStyle = phase.skyMul !== 1 ? scaleRgbString(baseSky, phase.skyMul) : baseSky;
   ctx.fillRect(-20, -20, W + 40, cam.horizon + 20);
-  const sk = sprites[phase.skylineKey];
+  const sk = sprites[skylineKey];
   const skH = Math.min(cam.horizon * 0.85, 200);
   const skW = skH * (sk.width / sk.height);
   const par = -camX * 14;
@@ -1665,7 +1685,8 @@ function frame(t) {
 
 // flat sky fill above each skyline strip, sampled from the art so they meet
 // seamlessly whatever the strip's top color is — one sample per skyline
-// image (dusk/night share 'skyline', day uses 'skyline_day')
+// image per district (dusk/night share 'skyline<suffix>', day uses
+// 'skyline_day<suffix>')
 let skySamples = { skyline: '#1c2e5e', skyline_day: '#8fc7ff' };
 
 function sampleSkyTopColor(key) {
@@ -1695,11 +1716,13 @@ function setLogoImg() {
 // screen and game are usable on the very first frame instead of waiting
 // on every asset in the game to load.
 sprites = loadSprites((key) => {
-  if (key === 'skyline' || key === 'skyline_day') sampleSkyTopColor(key);
+  if (key.startsWith('skyline')) sampleSkyTopColor(key);
   if (key === 'logo') setLogoImg();
 });
-sampleSkyTopColor('skyline');
-sampleSkyTopColor('skyline_day');
+DISTRICTS.forEach(d => {
+  sampleSkyTopColor(`skyline${d.suffix}`);
+  sampleSkyTopColor(`skyline_day${d.suffix}`);
+});
 setLogoImg();
 dailyNumSpan.textContent = String(game.dailyNumber);
 resize();

@@ -92,6 +92,36 @@ background) — they get chroma-keyed, resized to 800×417 and converted to
 | `skyline.png` | A very wide horizontal background strip of a distant city skyline at dusk: dark blue-purple gradient sky, silhouetted skyscrapers with scattered tiny lit yellow windows, a low warm orange glow and setting sun on the horizon, a dark tree line in the foreground bottom edge. **Wide landscape format, roughly 4:1. NOT transparent — full painted background. Must tile seamlessly when repeated horizontally** (left and right edges must match). |
 | `logo.png` | Retro arcade video game logo with the word **"PAPEROO"** in big chunky yellow pixel letters with a red outline and dark drop shadow, with a small rolled newspaper spinning off the corner. Transparent background. Wide format, roughly 2:1. |
 
+## Districts (house + skyline reskins per neighborhood)
+
+The street reskins every 3 levels, cycling through **suburbia** (above) →
+**downtown** → **beachfront** → **snowy suburb** → back to suburbia (see
+`DISTRICTS` in `js/sprites.js`). Districts 1+ use the same `house1/2/3_sub /
+_nosub` and `skyline` / `skyline_day` naming as suburbia, with a `_d<n>`
+suffix: `house1_sub_d1.webp`, `skyline_day_d2.webp`, etc. Same rules as above
+(transparent or solid-green background for houses, opaque tileable strip for
+skylines, no text, same shared style sentence), and same lit/unlit pairing
+per house design.
+
+**Note on transparency:** in practice, asking Gemini for a "transparent
+background" sometimes bakes in a literal grey checkerboard as opaque pixels
+instead of real alpha. If that happens, ask it to redo the same image with
+"a plain solid pure green (#00FF00) flat background, no checker pattern, no
+gradient" instead — much more reliable to chroma-key out afterwards.
+
+| District | File suffix | House themes (3 designs) | Skyline mood |
+|---|---|---|---|
+| Downtown | `_d1` | Brownstone rowhouse with stoop · sandstone apartment with fire escape · loft/warehouse conversion with huge steel windows | Dense neon skyline at dusk, streetlamps up front; bright glass-and-steel version by day |
+| Beachfront | `_d2` | Turquoise bungalow on stilts with a surfboard · sandy fisherman's cottage with a net and buoys · white Spanish-style stucco villa | Sunset boardwalk with a pier and palm trees; sparkling turquoise ocean by day |
+| Snowy suburb | `_d3` | Alpine ski chalet with string lights · snow-covered stone cottage with a smoking chimney · modern A-frame cabin with icicles | Snowy mountain village at dusk with falling snow; bright sunlit peaks by day |
+
+Each design keeps the same "shared style sentence" from the top of this
+file, plus the district's own material/palette cues (e.g. "weathered
+turquoise wood plank siding" for the beach bungalow). Generate a design's
+lit and dark pair back-to-back in the same chat ("now the exact same
+building... but dark and asleep: ...") so the pair stays pixel-identical
+apart from lighting, exactly as with the base suburbia houses.
+
 ## After generating
 
 Drop the PNGs into `assets/` with these exact names, commit, push — done. If

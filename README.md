@@ -34,7 +34,10 @@ backed by a Cloudflare Worker.
   and the round is over.
 - Ride over paper bundles on the road to restock (max 30 papers). Run low and
   the route guarantees a bundle ahead.
-- Streets cycle dusk → night → day as the levels climb.
+- Streets cycle dusk → night → day as the levels climb, and every 3 levels
+  the neighborhood itself changes: **Suburbia** → **Downtown** → **Beachfront**
+  → **Snowy Suburb**, then back to Suburbia. Each district has its own house
+  designs and skyline art; Daily Route locks the whole run to one district.
 - **Unlockable riders:** Zoe and Milo are available from the start; deliver
   25 lifetime papers to unlock Skye, reach level 5 to unlock Grandpa Stan.
   Every rider has different speed/handling.
@@ -101,6 +104,13 @@ code-drawn placeholder. Sprites go in
 placeholder if the file is missing, so art can land incrementally. File names,
 sizes and ready-to-use image-generation prompts are in
 [ART_PROMPTS.md](ART_PROMPTS.md).
+
+Houses and skylines are additionally keyed by **district** (see `DISTRICTS`
+in [`js/sprites.js`](js/sprites.js)): district 0 (suburbia) keeps the
+original unsuffixed file names (`house1_sub.webp`, `skyline.webp`, ...), and
+districts 1+ use a `_d<n>` suffix (`house1_sub_d1.webp`, `skyline_d1.webp`,
+...). Missing district art falls back to a district-tinted placeholder the
+same way the base sprites do.
 
 ## Code layout
 

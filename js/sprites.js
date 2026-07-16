@@ -7,6 +7,18 @@
  * exact file names and it appears in the game with zero code changes.
  */
 
+// Neighborhood districts: the street reskins every 3 levels (see
+// currentDistrictIndex in game.js), cycling through this list. District 0
+// keeps the original unsuffixed file names for backward compatibility;
+// districts 1+ look for `<sprite>_d<n>.webp` and fall back to a
+// district-tinted placeholder until real art lands.
+const DISTRICTS = [
+  { name: 'suburbia', suffix: '' },
+  { name: 'downtown', suffix: '_d1' },
+  { name: 'beachfront', suffix: '_d2' },
+  { name: 'snowy suburb', suffix: '_d3' },
+];
+
 const SPRITES = {
   // rider (rear view) — three lean poses, one set per playable character
   player_straight: { file: 'player_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
@@ -21,14 +33,6 @@ const SPRITES = {
   player4_straight: { file: 'player4_straight.webp', w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 0) },
   player4_left:     { file: 'player4_left.webp',     w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, -1) },
   player4_right:    { file: 'player4_right.webp',    w: 150, h: 200, draw: (c, w, h) => drawPlayer(c, w, h, 1) },
-
-  // houses (front view) — sub = subscriber (lit), nosub = non-subscriber (dark)
-  house1_sub:   { file: 'house1_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, true) },
-  house1_nosub: { file: 'house1_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 0, false) },
-  house2_sub:   { file: 'house2_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, true) },
-  house2_nosub: { file: 'house2_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 1, false) },
-  house3_sub:   { file: 'house3_sub.webp',   w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, true) },
-  house3_nosub: { file: 'house3_nosub.webp', w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, 2, false) },
 
   mailbox:     { file: 'mailbox.webp',     w: 70,  h: 130, draw: drawMailbox },
   mailbox_hit: { file: 'mailbox_hit.webp', w: 70,  h: 130, draw: (c, w, h) => drawMailbox(c, w, h, true) },
@@ -48,14 +52,29 @@ const SPRITES = {
   ped2:    { file: 'ped2.webp',    w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 1) },
   ped_hit: { file: 'ped_hit.webp', w: 90,  h: 150, draw: (c, w, h) => drawPed(c, w, h, 2) },
 
-  // scenery / ui — skyline is the dusk strip (used for dusk + night phases);
-  // skyline_day is the bright variant used every third level (see PHASES in
-  // game.js). Same placeholder painter for both since the painter's dusk
-  // look is a fine stand-in until the real art loads.
-  skyline:     { file: 'skyline.webp',     w: 1024, h: 256, draw: drawSkyline },
-  skyline_day: { file: 'skyline_day.webp', w: 1024, h: 256, draw: drawSkyline },
-  logo:        { file: 'logo.webp',        w: 640,  h: 300, draw: drawLogo },
+  logo: { file: 'logo.webp', w: 640, h: 300, draw: drawLogo },
 };
+
+// houses (front view, sub = subscriber/lit, nosub = non-subscriber/dark) and
+// skyline strips (skyline = dusk/night, skyline_day = the bright variant used
+// every third level, see PHASES in game.js), registered once per district.
+// District 0 (suburbia) keeps the original unsuffixed file names; districts
+// 1+ look for `<name><suffix>.webp` and fall back to a district-tinted
+// placeholder painter until real art lands.
+DISTRICTS.forEach((d, di) => {
+  for (let v = 0; v < 3; v++) {
+    SPRITES[`house${v + 1}_sub${d.suffix}`] =
+      { file: `house${v + 1}_sub${d.suffix}.webp`, w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, v, true, di) };
+    SPRITES[`house${v + 1}_nosub${d.suffix}`] =
+      { file: `house${v + 1}_nosub${d.suffix}.webp`, w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, v, false, di) };
+  }
+  // same placeholder painter for both skyline keys since the painter's dusk
+  // look is a fine stand-in until the real art loads.
+  SPRITES[`skyline${d.suffix}`] =
+    { file: `skyline${d.suffix}.webp`, w: 1024, h: 256, draw: (c, w, h) => drawSkyline(c, w, h, di) };
+  SPRITES[`skyline_day${d.suffix}`] =
+    { file: `skyline_day${d.suffix}.webp`, w: 1024, h: 256, draw: (c, w, h) => drawSkyline(c, w, h, di) };
+});
 
 // Fills `out` with placeholder canvases synchronously so the game is
 // playable on the first frame, then swaps each entry for the real image
@@ -169,26 +188,74 @@ function drawPlayer(ctx, w, h, lean) {
   ctx.restore();
 }
 
-const HOUSE_SCHEMES = [
-  { wall: '#c46d5e', roof: '#7a3b2e', door: '#3d2b1f' },
-  { wall: '#6d8fc4', roof: '#33456b', door: '#22304d' },
-  { wall: '#b8b0a1', roof: '#5d5d6e', door: '#4a3b2a' },
+// palette + roof silhouette per district, so placeholders read as distinct
+// neighborhoods even before real art replaces them (see DISTRICTS above)
+const DISTRICT_HOUSE_SCHEMES = [
+  { // suburbia — brick/cottage/ranch, gable roofs
+    roofStyle: 'gable',
+    schemes: [
+      { wall: '#c46d5e', roof: '#7a3b2e', door: '#3d2b1f' },
+      { wall: '#6d8fc4', roof: '#33456b', door: '#22304d' },
+      { wall: '#b8b0a1', roof: '#5d5d6e', door: '#4a3b2a' },
+    ],
+  },
+  { // downtown — brownstone/rowhouse, flat parapet roofs
+    roofStyle: 'flat',
+    schemes: [
+      { wall: '#8b5a44', roof: '#3a2a22', door: '#241a14' },
+      { wall: '#a9906f', roof: '#4a3f2e', door: '#2c2419' },
+      { wall: '#6b6f76', roof: '#2e3136', door: '#1c1e21' },
+    ],
+  },
+  { // beachfront — pastel bungalows, low gable roofs
+    roofStyle: 'gable',
+    schemes: [
+      { wall: '#8fd0d8', roof: '#e8845a', door: '#3d6b6f' },
+      { wall: '#f4c98a', roof: '#5a8fa8', door: '#2e4a56' },
+      { wall: '#f2eee0', roof: '#e37b6b', door: '#4a3b2a' },
+    ],
+  },
+  { // snowy suburb — cool chalet tones, gable roofs with a snow cap
+    roofStyle: 'snowy',
+    schemes: [
+      { wall: '#e7edf2', roof: '#54607a', door: '#3a2c22' },
+      { wall: '#c9d6e0', roof: '#7a3b3b', door: '#2c2419' },
+      { wall: '#b8c4cc', roof: '#3d4a5c', door: '#241a14' },
+    ],
+  },
 ];
 
-function drawHouse(ctx, w, h, variant, subscriber) {
-  const s = HOUSE_SCHEMES[variant];
+function drawHouse(ctx, w, h, variant, subscriber, district = 0) {
+  const d = DISTRICT_HOUSE_SCHEMES[district] || DISTRICT_HOUSE_SCHEMES[0];
+  const s = d.schemes[variant];
   const wallTop = h * 0.34;
   // walls
   ctx.fillStyle = subscriber ? s.wall : shade(s.wall, -30);
   ctx.fillRect(w * 0.08, wallTop, w * 0.84, h - wallTop);
   // roof
   ctx.fillStyle = subscriber ? s.roof : shade(s.roof, -25);
-  ctx.beginPath();
-  ctx.moveTo(0, wallTop + 6);
-  ctx.lineTo(w / 2, 4);
-  ctx.lineTo(w, wallTop + 6);
-  ctx.closePath();
-  ctx.fill();
+  if (d.roofStyle === 'flat') {
+    ctx.fillRect(w * 0.04, wallTop - h * 0.08, w * 0.92, h * 0.1);
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(0, wallTop + 6);
+    ctx.lineTo(w / 2, 4);
+    ctx.lineTo(w, wallTop + 6);
+    ctx.closePath();
+    ctx.fill();
+    if (d.roofStyle === 'snowy') {
+      ctx.fillStyle = '#f4f9ff';
+      ctx.beginPath();
+      ctx.moveTo(w * 0.14, wallTop + 4);
+      ctx.lineTo(w / 2, h * 0.12);
+      ctx.lineTo(w * 0.86, wallTop + 4);
+      ctx.lineTo(w * 0.8, wallTop + 8);
+      ctx.lineTo(w / 2, h * 0.19);
+      ctx.lineTo(w * 0.2, wallTop + 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
   // door
   ctx.fillStyle = s.door;
   rr(ctx, w * 0.42, h * 0.62, w * 0.16, h * 0.38, 4); ctx.fill();
@@ -373,39 +440,111 @@ function drawPed(ctx, w, h, pose) {
   }
 }
 
-function drawSkyline(ctx, w, h) {
+// sky gradient + skyline silhouette + foreground dressing per district, so
+// the placeholder reads as a distinct neighborhood before real art lands
+const DISTRICT_SKY_SCHEMES = [
+  { // suburbia — dusk over a distant city, tree line up front
+    sky: ['#1c2e5e', '#4a5d9e', '#c98a5b'], sun: { color: '#ffd97a', x: 0.72, y: 0.78, r: 0.16 },
+    building: '#151b33', lit: ['#ffd23f'], bhMin: 0.25, bhMax: 0.75, gap: 20, foreground: 'trees',
+  },
+  { // downtown — denser, taller skyline with neon-lit windows, lamp posts up front
+    sky: ['#241a3d', '#4a2f6e', '#d1548a'], sun: { color: '#f2a8c8', x: 0.66, y: 0.7, r: 0.09 },
+    building: '#12101f', lit: ['#ffd23f', '#5fe0e8', '#ff7ab8'], bhMin: 0.4, bhMax: 0.95, gap: 8, foreground: 'lamps',
+  },
+  { // beachfront — warm sunset over water, low boardwalk silhouette, palm trees up front
+    sky: ['#2b4a6b', '#e8845a', '#ffdfa0'], sun: { color: '#fff0c2', x: 0.5, y: 0.82, r: 0.22 },
+    building: '#2e4a56', lit: ['#ffe9b0'], bhMin: 0.1, bhMax: 0.26, gap: 46, foreground: 'palms',
+  },
+  { // snowy suburb — cold blue dusk, low mountains instead of buildings, pines up front
+    sky: ['#0f1b33', '#2c3f66', '#7a8fae'], sun: { color: '#d9e6ff', x: 0.78, y: 0.7, r: 0.1 },
+    building: '#1c2740', lit: ['#ffe9b0'], bhMin: 0.3, bhMax: 0.55, gap: 34, foreground: 'pines',
+  },
+];
+
+function drawSkyline(ctx, w, h, district = 0) {
+  const s = DISTRICT_SKY_SCHEMES[district] || DISTRICT_SKY_SCHEMES[0];
   const grd = ctx.createLinearGradient(0, 0, 0, h);
-  grd.addColorStop(0, '#1c2e5e');
-  grd.addColorStop(0.7, '#4a5d9e');
-  grd.addColorStop(1, '#c98a5b');
+  grd.addColorStop(0, s.sky[0]);
+  grd.addColorStop(0.7, s.sky[1]);
+  grd.addColorStop(1, s.sky[2]);
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, w, h);
-  // sun low on the horizon
-  ctx.fillStyle = '#ffd97a';
-  ctx.beginPath(); ctx.arc(w * 0.72, h * 0.78, h * 0.16, 0, Math.PI * 2); ctx.fill();
-  // distant buildings
-  ctx.fillStyle = '#151b33';
+  // sun/moon low on the horizon
+  ctx.fillStyle = s.sun.color;
+  ctx.beginPath(); ctx.arc(w * s.sun.x, h * s.sun.y, h * s.sun.r, 0, Math.PI * 2); ctx.fill();
+  // distant buildings / mountains
+  ctx.fillStyle = s.building;
   let x = 0;
   let seed = 7;
   const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   while (x < w) {
     const bw = 30 + rand() * 70;
-    const bh = h * (0.25 + rand() * 0.5);
-    ctx.fillRect(x, h - bh, bw, bh);
+    const bh = h * (s.bhMin + rand() * (s.bhMax - s.bhMin));
+    if (district === 3) { // jagged mountain peak instead of a rectangular building
+      ctx.beginPath();
+      ctx.moveTo(x, h);
+      ctx.lineTo(x + bw * 0.5, h - bh);
+      ctx.lineTo(x + bw, h);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.fillRect(x, h - bh, bw, bh);
+    }
     // lit windows
-    ctx.fillStyle = '#ffd23f';
     for (let i = 0; i < bw * bh * 0.001; i++) {
+      ctx.fillStyle = s.lit[Math.floor(rand() * s.lit.length)];
       ctx.fillRect(x + 4 + rand() * (bw - 10), h - bh + 4 + rand() * (bh - 12), 3, 4);
     }
-    ctx.fillStyle = '#151b33';
-    x += bw + 4 + rand() * 20;
+    ctx.fillStyle = s.building;
+    x += bw + 4 + rand() * s.gap;
   }
-  // tree line in front
-  ctx.fillStyle = '#0f2417';
-  for (let tx = 10; tx < w; tx += 26) {
-    ctx.beginPath();
-    ctx.arc(tx, h - 6, 14 + (tx % 3) * 4, Math.PI, 0);
-    ctx.fill();
+  // foreground dressing
+  if (s.foreground === 'trees') {
+    ctx.fillStyle = '#0f2417';
+    for (let tx = 10; tx < w; tx += 26) {
+      ctx.beginPath();
+      ctx.arc(tx, h - 6, 14 + (tx % 3) * 4, Math.PI, 0);
+      ctx.fill();
+    }
+  } else if (s.foreground === 'lamps') {
+    for (let tx = 14; tx < w; tx += 60) {
+      ctx.fillStyle = '#0c0a14';
+      ctx.fillRect(tx - 2, h - 34, 4, 34);
+      ctx.fillStyle = '#ffe9a8';
+      ctx.beginPath(); ctx.arc(tx, h - 36, 5, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (s.foreground === 'palms') {
+    for (let tx = 20; tx < w; tx += 90) {
+      ctx.strokeStyle = '#1d2b2e';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(tx, h); ctx.quadraticCurveTo(tx + 8, h - 24, tx, h - 42); ctx.stroke();
+      ctx.fillStyle = '#1d2b2e';
+      for (let f = 0; f < 5; f++) {
+        const a = (f / 4) * Math.PI - Math.PI * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(tx, h - 42);
+        ctx.quadraticCurveTo(tx + Math.cos(a) * 18, h - 42 + Math.sin(a) * 10 - 10, tx + Math.cos(a) * 30, h - 42 + Math.sin(a) * 18);
+        ctx.stroke();
+      }
+    }
+  } else if (s.foreground === 'pines') {
+    for (let tx = 8; tx < w; tx += 30) {
+      const th = 22 + (tx % 3) * 6;
+      ctx.fillStyle = '#0d1f14';
+      ctx.beginPath();
+      ctx.moveTo(tx, h);
+      ctx.lineTo(tx + 9, h - th);
+      ctx.lineTo(tx + 18, h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#e8f0fa';
+      ctx.beginPath();
+      ctx.moveTo(tx + 5, h - th * 0.55);
+      ctx.lineTo(tx + 9, h - th);
+      ctx.lineTo(tx + 13, h - th * 0.55);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 }
 
