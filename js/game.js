@@ -31,6 +31,9 @@ const THROW_COOLDOWN = 0.35;    // seconds between throws, so mashing can't wast
 const START_PAPERS = 15;
 const MAX_PAPERS = 30;
 const START_LIVES = 3;
+const TRACK_SEG = 45;           // distance between track-shape control points
+const TRACK_STRIPS = 72;        // road render strips per frame (curves/hills)
+const CENTRIFUGAL = 1.15;       // outward pull on bends, scales with speed^2
 const DAILY_LEVELS = 3;         // fixed length of a Daily Route run
 const SHARE_URL = 'https://allannapier.github.io/Paperoo/';
 
@@ -267,6 +270,99 @@ function project(x, y, z) {
   return { x: W / 2 + (x - camX) * s, y: cam.horizon + (cam.h - y) * s, s };
 }
 
+/* ---------- track shape (curves + hills) ----------
+ * The street bends and rolls. Control points every TRACK_SEG units hold a
+ * target curvature (bend) and elevation (hill); cosine interpolation between
+ * them keeps the road smooth. Points are generated lazily but strictly in
+ * order from a dedicated rng stream seeded on (daySeed, level), so a Daily
+ * Route's hills and bends are identical for every player — and independent
+ * of the route-content stream in spawnAhead.
+ *
+ * Gameplay stays entirely in road-relative coordinates (x = offset from road
+ * centre): collisions, throws and scoring never see the track shape. Only
+ * rendering (via projectRoad) and the centrifugal pull in update() do.
+ */
+function trackAmp(L) {
+  return {
+    curve: Math.min(0.0052, 0.0022 + 0.0005 * L), // max bend curvature
+    hill: Math.min(3.2, 1.0 + 0.35 * L),          // max elevation step
+  };
+}
+function ensureTrack(i) {
+  const pts = game.trackPts;
+  while (pts.length <= i) {
+    const n = pts.length;
+    // no track stream (title screen) or the first points of a level:
+    // straight and flat, so every street starts calm
+    if (!game.trackRng || n < 2) {
+      pts.push({ k: 0, y: n ? pts[n - 1].y : 0 });
+      continue;
+    }
+    const amp = trackAmp(game.level);
+    const r = game.trackRng;
+    const k = r() < 0.42 ? 0 : (r() < 0.5 ? -1 : 1) * (0.35 + 0.65 * r()) * amp.curve;
+    const prevY = pts[n - 1].y;
+    const y = r() < 0.3 ? prevY
+      : Math.max(0, Math.min(amp.hill * 2.2, prevY + (r() * 2 - 1) * amp.hill));
+    pts.push({ k, y });
+  }
+}
+function trackSample(d) {
+  const t = Math.max(0, d) / TRACK_SEG;
+  const i = Math.floor(t);
+  ensureTrack(i + 1);
+  const s = 0.5 - 0.5 * Math.cos((t - i) * Math.PI); // cosine ease
+  const a = game.trackPts[i], b = game.trackPts[i + 1];
+  return { k: a.k + (b.k - a.k) * s, y: a.y + (b.y - a.y) * s };
+}
+
+/* Per-frame offset table: for each depth z ahead of the camera, the lateral
+ * bend offset (x), elevation offset (y, pitch-corrected so the road under
+ * the rider stays level on screen) and the crest clip line (screen y above
+ * which that depth is visible — road beyond a crest hides in the dip).
+ * Rebuilt once per render; sampled by roadOff()/projectRoad(). */
+const trackT = { x: [], y: [], clip: [], step: DRAW_FAR / TRACK_STRIPS, n: TRACK_STRIPS };
+function updateTrackTable() {
+  const camD = game.dist - PLAYER_Z;
+  const camY = trackSample(camD).y;
+  const h = trackT.step;
+  let xo = 0, slope = 0;
+  for (let i = 0; i <= trackT.n; i++) {
+    const z = i * h;
+    const s = trackSample(camD + z);
+    trackT.x[i] = xo;
+    trackT.y[i] = s.y - camY - game.pitch * z;
+    slope += s.k * h;
+    xo += slope * h;
+  }
+  // crest clip: walking near→far, a depth is only visible above (smaller
+  // screen y than) the lowest point the nearer road has already reached
+  let minY = Infinity;
+  for (let i = 0; i <= trackT.n; i++) {
+    const z = Math.max(i * h, 0.9);
+    const y = cam.horizon + (cam.h - trackT.y[i]) * (cam.f / z);
+    trackT.clip[i] = minY;
+    minY = Math.min(minY, y);
+  }
+}
+function roadOff(z) {
+  if (!trackT.x.length) return { x: 0, y: 0, clip: Infinity };
+  const t = Math.max(0, Math.min(trackT.n - 0.001, z / trackT.step));
+  const i = Math.floor(t), f = t - i;
+  return {
+    x: trackT.x[i] + (trackT.x[i + 1] - trackT.x[i]) * f,
+    y: trackT.y[i] + (trackT.y[i + 1] - trackT.y[i]) * f,
+    clip: trackT.clip[i],
+  };
+}
+// road-following projection: what everything sitting on/along the street uses
+function projectRoad(x, y, z) {
+  const o = roadOff(z);
+  const p = project(x + o.x, y + o.y, z);
+  p.clip = o.clip;
+  return p;
+}
+
 /* ---------- audio (tiny synth, no files) ---------- */
 const AudioFX = {
   ctx: null,
@@ -361,6 +457,11 @@ const game = {
   nextActionD: 26,        // demand director: next point needing a reaction
   lastDeliverySide: 1,
   sceneryD: [40, 47],     // per-side fill of non-subscriber houses
+  propD: [33, 52],        // per-side fill of roadside props (trees/lamps)
+  trackRng: null,         // track-shape stream; null = straight flat (title)
+  trackPts: [],           // lazy control points, see ensureTrack
+  heading: 0,             // accumulated bend angle, for skyline parallax
+  pitch: 0,               // smoothed road slope under the rider
   ready: { '-1': false, '1': false },
   level: 1,
   lp: null,               // current level's director parameters
@@ -397,6 +498,12 @@ function startLevel(L) {
   // many rng calls the previous level consumed, so the same daily seed
   // always produces the identical street regardless of play style
   game.rng = mulberry32(hashSeed(game.daySeedBase, L));
+  // the track shape gets its own stream (same determinism rules) so bends
+  // and hills never desync the route-content stream above
+  game.trackRng = mulberry32(hashSeed(game.daySeedBase ^ 0x51ce, L));
+  game.trackPts = [];
+  game.heading = 0;
+  game.pitch = 0;
   game.lp = levelParams(L, game.character.speedMult);
   game.target = Math.ceil(game.lp.subsTotal * 0.6);
   game.runQuota += game.lp.subsTotal;
@@ -421,6 +528,7 @@ function startLevel(L) {
   game.nextActionD = 26;
   game.lastDeliverySide = 1;
   game.sceneryD = [40, 47];
+  game.propD = [33, 52];
   game.ready = { '-1': false, '1': false };
   game.mode = 'playing';
   game.paused = false;
@@ -532,6 +640,24 @@ function spawnAhead() {
         sub: false, delivered: false, missed: false, d, x: sign * HOUSE_X, wW: 7.4, wH: 6.6,
       });
       game.sceneryD[i] = d + 11 + game.rng() * 6;
+    }
+  }
+
+  // roadside props (trees/lamps per district) dress the verge between
+  // houses — pure scenery, no collision, but they make bends and hills read
+  // in motion. Cosmetic, so their spacing stays on Math.random and never
+  // touches the seeded route stream.
+  for (let i = 0; i < 2; i++) {
+    const sign = i === 0 ? -1 : 1;
+    while (game.propD[i] < sceneryEnd) {
+      const d = game.propD[i];
+      const clash = game.entities.find(e => e.kind === 'house' && e.side === sign && Math.abs(e.d - d) < 4.5);
+      if (clash) {
+        game.propD[i] = clash.d + 4.5 + Math.random() * 2;
+        continue;
+      }
+      game.entities.push({ kind: 'prop', side: sign, d, x: sign * (HOUSE_X - 1.3), wW: 3.2, wH: 5 });
+      game.propD[i] = d + 9 + Math.random() * 8;
     }
   }
 }
@@ -858,7 +984,7 @@ function paperLands(p) {
         game.score += pts;
         announce(nearBox ? `MAILBOX! +${pts}` : `DELIVERED +${pts}`, '#7bff9b');
         AudioFX.deliverSfx(game.streak);
-        const bp = project(px, 0.3, pd - game.dist + PLAYER_Z);
+        const bp = projectRoad(px, 0.3, pd - game.dist + PLAYER_Z);
         if (bp.s > 0) burstConfetti(bp.x, bp.y, nearBox ? 16 : 11);
         // multiplier tier just crossed a /3 boundary — celebrate it
         if (nowMult > game.comboMult) {
@@ -894,7 +1020,7 @@ function paperLands(p) {
     }
   }
   if (!scored) {
-    const proj = project(px, 0, pd - game.dist + PLAYER_Z);
+    const proj = projectRoad(px, 0, pd - game.dist + PLAYER_Z);
     if (proj.s > 0) addPopup('miss', proj.x, proj.y, '#8888aa');
   }
 }
@@ -925,6 +1051,16 @@ function update(realDt) {
 
   // steering
   game.player.x += game.player.steer * STEER_RATE * game.character.steerMult * dt;
+
+  // track shape under the rider: bends pull the rider toward the outside
+  // (fight it with steering), the slope feeds the camera pitch, and the
+  // accumulated heading pans the skyline as the street sweeps around
+  const tk = trackSample(game.dist);
+  game.player.x -= tk.k * game.speed * game.speed * CENTRIFUGAL * dt;
+  game.heading += tk.k * game.speed * dt;
+  const slopeNow = (trackSample(game.dist + 2).y - trackSample(game.dist - 2).y) / 4;
+  game.pitch += (slopeNow - game.pitch) * Math.min(1, 6 * dt);
+
   game.player.x = Math.max(-PLAYER_MAX_X, Math.min(PLAYER_MAX_X, game.player.x));
   camX = game.player.x * 0.85;
 
@@ -966,7 +1102,7 @@ function update(realDt) {
       const lat = Math.abs(e.x - game.player.x);
       if (game.invuln <= 0 && lat >= edge && lat < edge + 1.5) {
         game.score += 25;
-        const proj = project(e.x, 0.6, PLAYER_Z);
+        const proj = projectRoad(e.x, 0.6, PLAYER_Z);
         if (proj.s > 0) addPopup('CLOSE! +25', proj.x, proj.y, '#9ff5ff');
         AudioFX.nearMissSfx();
       }
@@ -1049,6 +1185,7 @@ function spriteFor(e) {
     case 'drain': return sprites.drain;
     case 'bundle': return sprites.bundle;
     case 'ped': return e.hit ? sprites.ped_hit : (Math.floor(e.t / 0.28) % 2 ? sprites.ped2 : sprites.ped1);
+    case 'prop': return sprites[`roadside${DISTRICTS[currentDistrictIndex()].suffix}`];
   }
 }
 
@@ -1065,39 +1202,79 @@ function render() {
   const phase = PHASES[currentPhaseIndex()];
   const skylineKey = phase.skylineKey + DISTRICTS[currentDistrictIndex()].suffix;
 
-  // sky + skyline strip (slight parallax against steering)
+  // rebuild the curve/hill offset table for this frame's camera position
+  updateTrackTable();
+
+  // horizon rides the road pitch: climbing points the view up (more sky),
+  // descending shows more ground — clamped so the HUD zones stay clear
+  const skyBaseY = cam.horizon +
+    Math.max(-H * 0.12, Math.min(H * 0.12, game.pitch * cam.f * 0.8));
+
+  // sky + skyline strip (parallax against steering AND accumulated bend
+  // heading, so the world pans as the street sweeps around a curve)
   const baseSky = skySamples[skylineKey] || '#1c2e5e';
   ctx.fillStyle = phase.skyMul !== 1 ? scaleRgbString(baseSky, phase.skyMul) : baseSky;
-  ctx.fillRect(-20, -20, W + 40, cam.horizon + 20);
+  ctx.fillRect(-20, -20, W + 40, skyBaseY + 20);
   const sk = sprites[skylineKey];
   const skH = Math.min(cam.horizon * 0.85, 200);
   const skW = skH * (sk.width / sk.height);
-  const par = -camX * 14;
+  const par = -camX * 14 - game.heading * 160;
   for (let x = ((par % skW) + skW) % skW - skW; x < W + skW; x += skW) {
-    ctx.drawImage(sk, x, cam.horizon - skH + 2, skW, skH);
+    ctx.drawImage(sk, x, skyBaseY - skH + 2, skW, skH);
   }
 
-  // grass
+  // base grass out to the horizon (the strips below repaint the contour)
   ctx.fillStyle = phase.grass;
-  ctx.fillRect(-20, cam.horizon, W + 40, H - cam.horizon + 20);
+  ctx.fillRect(-20, skyBaseY, W + 40, H - skyBaseY + 20);
 
   const zNear = Math.max(1.6, (cam.h * cam.f) / (H - cam.horizon) * 0.9);
 
-  // sidewalk then road (drawn as full trapezoids; road is straight)
-  const quad = (x1, x2, color) => {
-    const f1 = project(x1, 0, DRAW_FAR), f2 = project(x2, 0, DRAW_FAR);
-    const n1 = project(x1, 0, zNear), n2 = project(x2, 0, zNear);
+  // ground drawn far→near as strips so the road can bend (curves) and
+  // rise/fall (hills). Nearer strips paint over farther ones, which also
+  // makes crests hide the road dipping behind them for free. Strip edges are
+  // geometric in z so on-screen strip heights stay roughly even.
+  const groundY = z => {
+    const o = roadOff(z);
+    return cam.horizon + (cam.h - o.y) * (cam.f / z);
+  };
+  const edgeX = (x, z) => W / 2 + (x + roadOff(z).x - camX) * (cam.f / z);
+  // quad for one strip of a road-following band. The far edge is extended
+  // 0.75px ALONG the quad's slanted side edges (not straight down) onto the
+  // already-painted farther strip, so float seams never show through and
+  // slanted edges stay smooth
+  const stripQuad = (x1, x2, z1, z2, y1, y2, color) => {
+    const ax1 = edgeX(x1, z1), ax2 = edgeX(x2, z1); // near corners
+    let bx1 = edgeX(x1, z2), bx2 = edgeX(x2, z2);   // far corners
+    let ey = y2;
+    const dy = y1 - y2;
+    if (Math.abs(dy) > 0.01) {
+      const t = 0.75 / Math.abs(dy);
+      ey = y2 + (dy > 0 ? -0.75 : 0.75);
+      bx1 += (bx1 - ax1) * t;
+      bx2 += (bx2 - ax2) * t;
+    }
     ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.moveTo(f1.x, f1.y); ctx.lineTo(f2.x, f2.y);
-    ctx.lineTo(n2.x, n2.y); ctx.lineTo(n1.x, n1.y);
+    ctx.moveTo(bx1, ey); ctx.lineTo(bx2, ey);
+    ctx.lineTo(ax2, y1); ctx.lineTo(ax1, y1);
     ctx.closePath();
     ctx.fill();
   };
-  quad(-ROAD_HALF - SIDEWALK, ROAD_HALF + SIDEWALK, phase.sidewalk);
-  quad(-ROAD_HALF, ROAD_HALF, phase.road);
-  quad(-ROAD_HALF - 0.18, -ROAD_HALF + 0.18, phase.line);
-  quad(ROAD_HALF - 0.18, ROAD_HALF + 0.18, phase.line);
+  for (let i = TRACK_STRIPS - 1; i >= 0; i--) {
+    const z1 = zNear * Math.pow(DRAW_FAR / zNear, i / TRACK_STRIPS);
+    const z2 = zNear * Math.pow(DRAW_FAR / zNear, (i + 1) / TRACK_STRIPS);
+    const y1 = groundY(z1), y2 = groundY(z2);
+    // bands never overlap laterally (grass | sidewalk | road) — stacking
+    // them would leave a blended contamination line at every strip seam
+    // where each layer's antialiased edge lands on the same pixel row
+    stripQuad(-80, -ROAD_HALF - SIDEWALK, z1, z2, y1, y2, phase.grass);
+    stripQuad(ROAD_HALF + SIDEWALK, 80, z1, z2, y1, y2, phase.grass);
+    stripQuad(-ROAD_HALF - SIDEWALK, -ROAD_HALF, z1, z2, y1, y2, phase.sidewalk);
+    stripQuad(ROAD_HALF, ROAD_HALF + SIDEWALK, z1, z2, y1, y2, phase.sidewalk);
+    stripQuad(-ROAD_HALF, ROAD_HALF, z1, z2, y1, y2, phase.road);
+    stripQuad(-ROAD_HALF - 0.18, -ROAD_HALF + 0.18, z1, z2, y1, y2, phase.line);
+    stripQuad(ROAD_HALF - 0.18, ROAD_HALF + 0.18, z1, z2, y1, y2, phase.line);
+  }
 
   // scrolling centre dashes
   ctx.fillStyle = phase.dash;
@@ -1105,8 +1282,9 @@ function render() {
   for (let d = Math.floor((game.dist + zNear) / step) * step; d < game.dist + DRAW_FAR; d += step) {
     const z1 = d - game.dist, z2 = z1 + 2.4;
     if (z1 < zNear || z2 > DRAW_FAR) continue;
-    const a = project(-0.14, 0, z2), b = project(0.14, 0, z2);
-    const c2 = project(0.14, 0, z1), d2 = project(-0.14, 0, z1);
+    const a = projectRoad(-0.14, 0, z2), b = projectRoad(0.14, 0, z2);
+    const c2 = projectRoad(0.14, 0, z1), d2 = projectRoad(-0.14, 0, z1);
+    if (d2.y > d2.clip + 1) continue; // hidden behind a crest
     ctx.beginPath();
     ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(d2.x, d2.y);
     ctx.closePath();
@@ -1123,10 +1301,11 @@ function render() {
       for (let ci = 0; ci < cols; ci++) {
         const x1 = -ROAD_HALF + (2 * ROAD_HALF * ci) / cols;
         const x2 = -ROAD_HALF + (2 * ROAD_HALF * (ci + 1)) / cols;
-        const a = project(x1, 0, z + (ri + 1) * 0.9);
-        const b = project(x2, 0, z + (ri + 1) * 0.9);
-        const c2 = project(x2, 0, z + ri * 0.9);
-        const d2 = project(x1, 0, z + ri * 0.9);
+        const a = projectRoad(x1, 0, z + (ri + 1) * 0.9);
+        const b = projectRoad(x2, 0, z + (ri + 1) * 0.9);
+        const c2 = projectRoad(x2, 0, z + ri * 0.9);
+        const d2 = projectRoad(x1, 0, z + ri * 0.9);
+        if (d2.y > d2.clip + 1) continue; // hidden behind a crest
         ctx.fillStyle = (ri + ci) % 2 ? '#e8e8ec' : '#26262e';
         ctx.beginPath();
         ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(d2.x, d2.y);
@@ -1143,7 +1322,8 @@ function render() {
     const pulse = 0.55 + 0.35 * Math.sin(game.time * 7);
     for (const side of [-1, 1]) {
       const ready = game.ready && game.ready[side];
-      const p = project(side * MAILBOX_X, 0, ringZ);
+      const p = projectRoad(side * MAILBOX_X, 0, ringZ);
+      if (p.y > p.clip + 1) continue; // hidden behind a crest
       ctx.strokeStyle = ready ? '#7bff9b' : 'rgba(255,255,255,0.5)';
       ctx.lineWidth = ready ? 3.5 : 2;
       ctx.globalAlpha = ready ? pulse : 0.35;
@@ -1167,11 +1347,22 @@ function render() {
   for (const { e, z } of drawList) {
     const img = spriteFor(e);
     if (!img) continue;
-    const p = project(e.x, 0, z);
+    const p = projectRoad(e.x, 0, z);
     const dw = e.wW * p.s;
     // height follows the sprite's aspect so real art is never distorted
     // (wH remains the nominal height for placeholders' proportions)
     const dh = dw * (img.height / img.width);
+    // crest occlusion: fully below the clip line hides the sprite; a base
+    // below it with the top poking over draws only the visible upper part
+    // (a roof showing over the brow of a hill)
+    const clipped = Number.isFinite(p.clip) && p.y > p.clip + 0.5;
+    if (clipped) {
+      if (p.y - dh > p.clip) continue;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-40, -40, W + 80, p.clip + 40);
+      ctx.clip();
+    }
     // faint fade-in at the horizon
     ctx.globalAlpha = Math.min(1, (DRAW_FAR - z) / 12);
     // pickups glow so they read as something to collect
@@ -1214,6 +1405,7 @@ function render() {
       ctx.fillStyle = e.kind === 'dog' ? '#ff4444' : '#9fe3ff';
       ctx.fillText(label, p.x, my);
     }
+    if (clipped) ctx.restore();
     ctx.globalAlpha = 1;
   }
 
@@ -1221,7 +1413,7 @@ function render() {
   for (const p of game.thrown) {
     const z = p.d - game.dist + PLAYER_Z;
     if (z <= zNear) continue;
-    const pr = project(p.x, p.y, z);
+    const pr = projectRoad(p.x, p.y, z);
     const size = 0.42 * pr.s;
     ctx.save();
     ctx.translate(pr.x, pr.y);
@@ -1229,7 +1421,7 @@ function render() {
     ctx.drawImage(sprites.paper, -size / 2, -size / 2, size, size);
     ctx.restore();
     // shadow on the ground
-    const sh = project(p.x, 0, z);
+    const sh = projectRoad(p.x, 0, z);
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
     ctx.ellipse(sh.x, sh.y, size * 0.4, size * 0.14, 0, 0, Math.PI * 2);
@@ -1240,7 +1432,7 @@ function render() {
   if (game.mode !== 'title' && game.mode !== 'select' && (game.invuln <= 0 || Math.floor(game.time * 10) % 2 === 0)) {
     const lean = game.player.steer < 0 ? 'left' : game.player.steer > 0 ? 'right' : 'straight';
     const img = sprites[`${game.character.prefix}_${lean}`];
-    const p = project(game.player.x, 0, PLAYER_Z);
+    const p = projectRoad(game.player.x, 0, PLAYER_Z);
     // fixed world height; width follows the sprite's aspect ratio
     const dh = 2.2 * p.s;
     const dw = dh * (img.width / img.height);
