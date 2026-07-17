@@ -34,6 +34,10 @@ backed by a Cloudflare Worker.
   and the round is over.
 - Ride over paper bundles on the road to restock (max 30 papers). Run low and
   the route guarantees a bundle ahead.
+- The street **bends and rolls**: curves pull the rider toward the outside
+  (fight them with steering — the pull grows with speed), and hills hide
+  what's over the next crest. Every street's shape is seeded, so a Daily
+  Route's bends are the same for everyone.
 - Streets cycle dusk → night → day as the levels climb, and every 3 levels
   the neighborhood itself changes: **Suburbia** → **Downtown** → **Beachfront**
   → **Snowy Suburb**, then back to Suburbia. Each district has its own house

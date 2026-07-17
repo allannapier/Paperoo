@@ -68,6 +68,10 @@ DISTRICTS.forEach((d, di) => {
     SPRITES[`house${v + 1}_nosub${d.suffix}`] =
       { file: `house${v + 1}_nosub${d.suffix}.webp`, w: 280, h: 250, draw: (c, w, h) => drawHouse(c, w, h, v, false, di) };
   }
+  // roadside prop dressing the verge between houses (oak / street lamp /
+  // palm / snowy pine — see drawRoadside), one per district
+  SPRITES[`roadside${d.suffix}`] =
+    { file: `roadside${d.suffix}.webp`, w: 300, h: 420, draw: (c, w, h) => drawRoadside(c, w, h, di) };
   // same placeholder painter for both skyline keys since the painter's dusk
   // look is a fine stand-in until the real art loads.
   SPRITES[`skyline${d.suffix}`] =
@@ -288,6 +292,69 @@ function shade(hex, amt) {
   const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
   const b = Math.max(0, Math.min(255, (n & 255) + amt));
   return `rgb(${r},${g},${b})`;
+}
+
+// roadside prop per district: 0 oak tree, 1 street lamp, 2 palm, 3 snowy pine
+function drawRoadside(ctx, w, h, district) {
+  const cx = w / 2;
+  if (district === 1) { // street lamp
+    ctx.fillStyle = '#1c2420';
+    ctx.fillRect(cx - 7, h * 0.16, 14, h * 0.84);
+    ctx.fillRect(cx - 26, h - 16, 52, 16);
+    ctx.fillStyle = 'rgba(255,214,110,0.28)';
+    ctx.beginPath(); ctx.arc(cx, h * 0.12, w * 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd88a';
+    rr(ctx, cx - 20, h * 0.05, 40, h * 0.12, 8); ctx.fill();
+    ctx.fillStyle = '#1c2420';
+    ctx.fillRect(cx - 26, h * 0.045, 52, 8);
+  } else if (district === 3) { // snowy pine
+    ctx.fillStyle = '#4a3220';
+    ctx.fillRect(cx - 12, h * 0.82, 24, h * 0.18);
+    for (let t = 0; t < 3; t++) {
+      const top = h * (0.02 + t * 0.26), bot = h * (0.36 + t * 0.26), hw = w * (0.22 + t * 0.13);
+      ctx.fillStyle = '#1d3a2e';
+      ctx.beginPath();
+      ctx.moveTo(cx, top); ctx.lineTo(cx + hw, bot); ctx.lineTo(cx - hw, bot);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#eef4fc';
+      ctx.beginPath();
+      ctx.moveTo(cx, top); ctx.lineTo(cx + hw * 0.55, top + (bot - top) * 0.5);
+      ctx.lineTo(cx - hw * 0.55, top + (bot - top) * 0.5);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (district === 2) { // palm
+    ctx.strokeStyle = '#a8825a';
+    ctx.lineWidth = 18;
+    ctx.beginPath();
+    ctx.moveTo(cx - 16, h);
+    ctx.quadraticCurveTo(cx + 26, h * 0.55, cx + 8, h * 0.22);
+    ctx.stroke();
+    ctx.strokeStyle = '#2e8b4f';
+    ctx.lineWidth = 13;
+    for (let f = 0; f < 6; f++) {
+      const a = (f / 5) * Math.PI * 1.15 - Math.PI * 1.07;
+      ctx.beginPath();
+      ctx.moveTo(cx + 8, h * 0.22);
+      ctx.quadraticCurveTo(cx + 8 + Math.cos(a) * w * 0.3, h * 0.22 + Math.sin(a) * h * 0.16 - h * 0.08,
+        cx + 8 + Math.cos(a) * w * 0.46, h * 0.22 + Math.sin(a) * h * 0.24);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#6e4a2a';
+    ctx.beginPath(); ctx.arc(cx - 2, h * 0.26, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + 16, h * 0.28, 9, 0, Math.PI * 2); ctx.fill();
+  } else { // oak
+    ctx.fillStyle = '#5b3a1e';
+    ctx.fillRect(cx - 13, h * 0.62, 26, h * 0.38);
+    const blob = (bx, by, r, col) => {
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.fill();
+    };
+    blob(cx, h * 0.32, w * 0.34, '#2f6b3a');
+    blob(cx - w * 0.22, h * 0.44, w * 0.24, '#2f6b3a');
+    blob(cx + w * 0.22, h * 0.44, w * 0.24, '#2f6b3a');
+    blob(cx - w * 0.08, h * 0.26, w * 0.2, '#3f8a4c');
+    blob(cx + w * 0.16, h * 0.34, w * 0.16, '#3f8a4c');
+  }
 }
 
 function drawMailbox(ctx, w, h, hit) {

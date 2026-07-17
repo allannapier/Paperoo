@@ -122,6 +122,21 @@ lit and dark pair back-to-back in the same chat ("now the exact same
 building... but dark and asleep: ...") so the pair stays pixel-identical
 apart from lighting, exactly as with the base suburbia houses.
 
+## Roadside props (one per district)
+
+Scenery sprites planted along the verge between houses — they make the road's
+bends and hills read in motion. One prop design per district, same district
+suffix scheme as the houses. Use "soft neutral lighting" in place of the dusk
+phrase (they appear at all times of day). Tall portrait sprites, whole object
+visible and centred, bottom edge = ground line.
+
+| File | Prompt (after the adjusted style sentence) |
+|---|---|
+| `roadside.png` | A single leafy suburban oak tree: round dense green canopy, short sturdy brown trunk, front view, the whole tree visible and centred, filling most of the frame. Portrait orientation, roughly 3:4 width to height. |
+| `roadside_d1.png` | A single ornate vintage cast-iron city street lamp post, dark green-black metal, decorative base, one glowing warm amber lantern head at the top, front view, whole lamp visible and centred. Tall thin portrait orientation. |
+| `roadside_d2.png` | A single tropical palm tree: gently curved sandy-brown segmented trunk, lush arching green fronds, two coconuts, front view, whole tree visible and centred. Portrait orientation. |
+| `roadside_d3.png` | A single snow-covered pine tree: dark blue-green conifer with thick white snow caps on every branch tier, front view, whole tree visible and centred. Portrait orientation. |
+
 ## After generating
 
 Drop the PNGs into `assets/` with these exact names, commit, push — done. If
